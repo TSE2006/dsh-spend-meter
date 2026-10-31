@@ -80,7 +80,7 @@ window.__ModuleLoader__.load({
       'panel.runsLeft': '≈ {count} more turns at this pace',
       'panel.models': 'By model',
       'panel.turns': 'Per turn',
-      'panel.turnsMore': '+{count}',
+      'panel.turnsMore': '+{count} earlier',
       'panel.usage': 'Platform usage',
       'panel.topUp': 'Top up',
       'panel.unpriced': 'No tariff for {models}',
@@ -117,7 +117,7 @@ window.__ModuleLoader__.load({
       'panel.runsLeft': '按当前速度还能聊约 {count} 轮',
       'panel.models': '按模型',
       'panel.turns': '逐轮成本',
-      'panel.turnsMore': '+{count} 轮',
+      'panel.turnsMore': '更早 {count} 轮',
       'panel.usage': '平台用量',
       'panel.topUp': '去充值',
       'panel.unpriced': '{models} 没有价目，未计价',
@@ -547,6 +547,20 @@ window.__ModuleLoader__.load({
       const shownTurns = turns.slice(-8)
       const hiddenTurns = Math.max(0, turns.length - shownTurns.length)
       const models = view && Array.isArray(view.models) ? view.models : []
+      // The same model can show up twice when a session switched provider (e.g. an
+      // official key and an account-backed one). Only then is `provider/model` worth
+      // the extra width; otherwise the bare model name reads better.
+      const modelNameCounts = new Map()
+      for (const entry of models) {
+        const name = String(entry.model || entry.id)
+        modelNameCounts.set(name, (modelNameCounts.get(name) || 0) + 1)
+      }
+      const modelLabel = (entry) => {
+        const name = String(entry.model || entry.id)
+        return (modelNameCounts.get(name) || 0) > 1 && entry.provider
+          ? `${entry.provider}/${name}`
+          : name
+      }
       const unpriced = view && Array.isArray(view.unpriced) ? view.unpriced : []
 
       let runsLeft
@@ -664,7 +678,7 @@ window.__ModuleLoader__.load({
                     models.slice(0, 6).map((entry) =>
                       h(DetailRow, {
                         key: entry.id,
-                        label: entry.model,
+                        label: modelLabel(entry),
                         hint: `${formatTokens(tokensIn(entry))} in / ${formatTokens(entry.tokens?.out || 0)} out`,
                         value: `${symbol}${formatMoney(entry.cost)}`,
                         tone: entry.priced ? undefined : 'warn',

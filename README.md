@@ -4,6 +4,10 @@
 
 ![输入框下方的药丸](docs/preview.png)
 
+点开之后是这笔账：
+
+<img src="docs/panel.png" width="380" alt="账本面板：分项花费、缓存省下、余额、按模型、逐轮成本">
+
 样式刻意贴合 DSH 自带的两处 UI：药丸照 `StatsPills`（`3 轮 228 步 · 232 tok/s`、`20.9M tok · 缓存命中 96%` 同款裸文字按钮），弹层照 `stat-dialog`（「Token 用量」那张卡片的背景、圆角、阴影、分隔线、右对齐等宽数字）。全部设计令牌取自运行时的 `--dsw-*` / `--dsh-*` 变量，浅色/深色主题自动跟随。
 
 ## 安装
@@ -92,7 +96,8 @@
 | `locale/{en,zh}.json` | 插件管理器里显示的标题与说明 |
 | `icon.svg` | 插件图标 |
 | `cordis.patch.yml` | bundle 插入声明 |
-| `docs/preview.png` | 上面那张预览图 |
+| `docs/preview.png` | 药丸截图 |
+| `docs/panel.png` | 账本弹层截图 |
 
 改完源码后：`Copy-Item client.ui.js client.js -Force`，DSH 的客户端模块 HMR 大约 3–4 秒生效，不需要刷新页面。
 
