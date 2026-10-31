@@ -65,7 +65,7 @@
 
 ## 配置示例
 
-在 `C:\Users\30617\.dsh\profiles\<profile>\cordis.patch.yml` 里给 `spend-meter` 行加 `config`：
+在 profile 的 `cordis.patch.yml`（`%USERPROFILE%\.dsh\profiles\<profile>\`）里给 `spend-meter` 行加 `config`：
 
 ```yaml
 - id: spend-meter
