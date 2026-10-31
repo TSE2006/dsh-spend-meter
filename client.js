@@ -80,7 +80,8 @@ window.__ModuleLoader__.load({
       'panel.runsLeft': '≈ {count} more turns at this pace',
       'panel.models': 'By model',
       'panel.turns': 'Per turn',
-      'panel.turnsMore': '+{count} earlier',
+      'panel.turnsMore': 'Show {count} earlier',
+      'panel.turnsLess': 'Show fewer',
       'panel.usage': 'Platform usage',
       'panel.topUp': 'Top up',
       'panel.unpriced': 'No tariff for {models}',
@@ -117,7 +118,8 @@ window.__ModuleLoader__.load({
       'panel.runsLeft': '按当前速度还能聊约 {count} 轮',
       'panel.models': '按模型',
       'panel.turns': '逐轮成本',
-      'panel.turnsMore': '更早 {count} 轮',
+      'panel.turnsMore': '展开更早 {count} 轮',
+      'panel.turnsLess': '收起',
       'panel.usage': '平台用量',
       'panel.topUp': '去充值',
       'panel.unpriced': '{models} 没有价目，未计价',
@@ -188,8 +190,11 @@ window.__ModuleLoader__.load({
 .sm-turns span{display:flex;justify-content:space-between;gap:8px}
 .sm-turns b{color:var(--dsw-alias-label-secondary);font-weight:400}
 .sm-footer{display:flex;gap:16px;margin-top:12px;border-top:.5px solid var(--dsw-alias-border-l2);padding-top:10px}
-.sm-footer a{color:var(--dsw-alias-brand-primary);text-decoration:none}
+.sm-footer a{color:var(--dsw-alias-brand-primary);text-decoration:none;display:inline-flex;align-items:center;gap:2px}
 .sm-footer a:hover{text-decoration:underline}
+.sm-external{font-size:10px;line-height:1;opacity:.75}
+.sm-more{font:inherit;color:var(--dsw-alias-label-tertiary);background:0 0;border:none;padding:0;margin-top:6px;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+.sm-more:hover{color:var(--dsw-alias-brand-primary);text-decoration:underline}
 .sm-problem{margin-top:10px;color:var(--dsw-alias-state-warn-primary);white-space:pre-wrap;word-break:break-word;font-size:11px;line-height:16px}
 `
 
@@ -462,6 +467,25 @@ window.__ModuleLoader__.load({
       return { status: 'loading' }
     }
 
+    /**
+     * Opens a platform page outside the app. The shell turns `window.open` into
+     * `shell.openExternal`; a browser tab is the worst case. Never throws.
+     */
+    function openExternal(event, url) {
+      try {
+        if (event && typeof event.preventDefault === 'function') event.preventDefault()
+      } catch (error) {
+        note('link', error)
+      }
+      try {
+        // Electron denies the popup and forwards the URL to `shell.openExternal`,
+        // so the null return is expected and must not be treated as a failure.
+        window.open(url, '_blank', 'noopener,noreferrer')
+      } catch (error) {
+        note('link', error)
+      }
+    }
+
     //#endregion
 
     //#region components
@@ -506,7 +530,7 @@ window.__ModuleLoader__.load({
     }
 
     /** Pure panel body: no hooks of its own, called from a guarded render. */
-    function buildPanel({ t, view, wallet, now, open }) {
+    function buildPanel({ t, view, wallet, now, open, turnsExpanded, onToggleTurns }) {
       const pricing = (view && view.pricing) || FALLBACK_PRICING
       const currency = (view && view.currency) || 'CNY'
       const symbol = symbolOf(currency)
@@ -544,8 +568,9 @@ window.__ModuleLoader__.load({
           : t('panel.tier.toOffPeak', { time: countdown })
 
       const turns = view && Array.isArray(view.turns) ? view.turns : []
-      const shownTurns = turns.slice(-8)
-      const hiddenTurns = Math.max(0, turns.length - shownTurns.length)
+      const latestTurns = turns.slice(-8)
+      const shownTurns = turnsExpanded ? turns.slice(-80) : latestTurns
+      const hiddenTurns = Math.max(0, turns.length - latestTurns.length)
       const models = view && Array.isArray(view.models) ? view.models : []
       // The same model can show up twice when a session switched provider (e.g. an
       // official key and an account-backed one). Only then is `provider/model` worth
@@ -710,7 +735,18 @@ window.__ModuleLoader__.load({
                     ),
                   ),
                   hiddenTurns > 0
-                    ? h('div', { className: 'sm-note-tight' }, t('panel.turnsMore', { count: hiddenTurns }))
+                    ? h(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'sm-more',
+                          'aria-expanded': turnsExpanded ? 'true' : 'false',
+                          onClick: onToggleTurns,
+                        },
+                        turnsExpanded
+                          ? t('panel.turnsLess')
+                          : t('panel.turnsMore', { count: hiddenTurns }),
+                      )
                     : null,
                 )
               : null,
@@ -718,8 +754,30 @@ window.__ModuleLoader__.load({
             h(
               'div',
               { className: 'sm-footer' },
-              h('a', { href: USAGE_URL, target: '_blank', rel: 'noreferrer' }, t('panel.usage')),
-              h('a', { href: TOPUP_URL, target: '_blank', rel: 'noreferrer' }, t('panel.topUp')),
+              h(
+                'a',
+                {
+                  href: USAGE_URL,
+                  target: '_blank',
+                  rel: 'noreferrer',
+                  title: USAGE_URL,
+                  onClick: (event) => openExternal(event, USAGE_URL),
+                },
+                t('panel.usage'),
+                h('span', { className: 'sm-external', 'aria-hidden': 'true' }, '↗'),
+              ),
+              h(
+                'a',
+                {
+                  href: TOPUP_URL,
+                  target: '_blank',
+                  rel: 'noreferrer',
+                  title: TOPUP_URL,
+                  onClick: (event) => openExternal(event, TOPUP_URL),
+                },
+                t('panel.topUp'),
+                h('span', { className: 'sm-external', 'aria-hidden': 'true' }, '↗'),
+              ),
             ),
 
             problems.length > 0
@@ -763,6 +821,7 @@ window.__ModuleLoader__.load({
         const wallet = pickWallet(remoteWallet, view)
 
       const [open, setOpen] = React.useState(false)
+      const [turnsExpanded, setTurnsExpanded] = React.useState(false)
       const [now, setNow] = React.useState(() => Date.now())
       const rootRef = React.useRef(null)
 
@@ -792,7 +851,15 @@ window.__ModuleLoader__.load({
 
       let model
       try {
-        model = buildPanel({ t, view, wallet, now, open })
+        model = buildPanel({
+          t,
+          view,
+          wallet,
+          now,
+          open,
+          turnsExpanded,
+          onToggleTurns: () => setTurnsExpanded((previous) => !previous),
+        })
       } catch (error) {
         note('render', error)
         model = { chipCost: '—', balanceLabel: '—', balanceTone: undefined, peak: false, panel: null }
