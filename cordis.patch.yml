@@ -1,0 +1,3 @@
+- insert:
+    - id: spend-meter
+      name: '@local/spend-meter'

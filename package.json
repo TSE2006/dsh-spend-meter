@@ -1,0 +1,55 @@
+{
+  "name": "@local/spend-meter",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shows the remaining DeepSeek balance and this conversation's spend in the composer dock",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "balance",
+    "cost",
+    "usage"
+  ],
+  "license": "MIT",
+  "author": "TSE2006",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TSE2006/dsh-spend-meter.git"
+  },
+  "homepage": "https://github.com/TSE2006/dsh-spend-meter#readme",
+  "bugs": {
+    "url": "https://github.com/TSE2006/dsh-spend-meter/issues"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "client.ui.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-theme"
+      ]
+    }
+  }
+}

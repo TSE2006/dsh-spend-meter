@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Spend Meter",
+    "description": "Shows this conversation's cost and the remaining DeepSeek balance under the composer, with a cache, per-turn, and per-model ledger."
+  }
+}
