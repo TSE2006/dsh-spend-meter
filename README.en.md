@@ -134,8 +134,19 @@ Add a `config` block to the `spend-meter` row in the profile's `cordis.patch.yml
 | `README.md` / `README.en.md` | Chinese / English documentation |
 | `docs/preview.png` | Screenshot of the pill |
 | `docs/panel.png` | Screenshot of the ledger popover |
+| `tests/projection.test.mjs` | Host half: folding tests for pricing, day buckets and the budget view |
+| `tests/client.test.mjs` | Client half: loads the bundle the way the kernel does, renders the pill and the popover |
+| `.github/workflows/test.yml` | Runs the suite on Node 22/24 × Linux/Windows |
 
 After editing the source: `Copy-Item client.ui.js client.js -Force`. DSH's client-module HMR picks it up in about 3–4 seconds; no page refresh is needed.
+
+## Tests
+
+```bash
+npm test      # = node --test "tests/*.test.mjs"
+```
+
+Node's built-in `node:test` and `node:assert` only — there are no development dependencies. The host half folds events through a fake projection definition; the client half loads `client.js` exactly as the kernel does (`__ModuleLoader__.load` plus `factory(require)`) and renders the pill and popover through a minimal React/Hook stand-in. Module body, dictionary keys, registration options, link handlers and budget colouring are therefore covered without a browser.
 
 ## Known limits
 

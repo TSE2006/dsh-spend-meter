@@ -134,8 +134,19 @@
 | `README.md` / `README.en.md` | 中文 / 英文文档 |
 | `docs/preview.png` | 药丸截图 |
 | `docs/panel.png` | 账本弹层截图 |
+| `tests/projection.test.mjs` | Host 半：计价、日桶、预算视图的折叠测试 |
+| `tests/client.test.mjs` | Client 半：按内核加载 bundle，渲染药丸与弹层 |
+| `.github/workflows/test.yml` | 在 Node 22/24 × Linux/Windows 上跑测试 |
 
 改完源码后：`Copy-Item client.ui.js client.js -Force`，DSH 的客户端模块 HMR 大约 3–4 秒生效，不需要刷新页面。
+
+## 测试
+
+```bash
+npm test      # = node --test "tests/*.test.mjs"
+```
+
+只依赖 Node 内置的 `node:test` 与 `node:assert`，没有开发依赖。Host 半用假的投影定义直接折叠事件；Client 半把 `client.js` 当作内核那样加载（`__ModuleLoader__.load` + `factory(require)`），用最小的 React/Hook 替身渲染药丸和弹层，所以模块体、字典键、注册参数、外链 handler、预算变色都能在无浏览器的情况下覆盖。
 
 ## 已知限制
 
