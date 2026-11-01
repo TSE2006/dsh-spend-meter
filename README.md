@@ -76,6 +76,28 @@
 
 单位：元 / 百万 tokens，格式为「高峰 / 空闲」。查表顺序是：先精确匹配模型名，再抹掉日期/版本尾巴（如 `-1017`、`-20250929`）匹配，最后才按名字族回退——名字里带 `deepseek` 且含 `flash` 按 flash 价、含 `pro` 按 pro 价。走到第三级时弹层会注明「按模型族近似计价：<模型>」。其余模型计入 `unpriced`，不参与金额合计。
 
+`config.models` 里既可以用上面的 `peak` / `offPeak` 写法，也可以用**平价写法**（一个价全天生效，适合不区分时段的第三方渠道）：
+
+```yaml
+    models:
+      deepseek-v4.1-flash-1017: { cacheHit: 0.02, cacheMiss: 1, output: 4 }   # 平价，峰谷同价
+```
+
+## 计费口径
+
+分子分项全部来自 DSH 记录的 usage 事件，不额外请求平台账单：
+
+| 分项 | 取自 | 说明 |
+| --- | --- | --- |
+| 未命中输入 | `usage.inputTokens` | 真实日志里满足 `totalTokens = inputTokens + outputTokens + cacheReadTokens`，所以这是**未命中**部分，不会是全量 prompt |
+| 命中输入 | `usage.cacheReadTokens` | 按命中价计；同时算出「缓存省下」= 这部分若按未命中价要花多少 |
+| 输出 | `usage.outputTokens` | 推理模型把思考计入输出，就一并按输出价算；usage 里没有独立的 reasoning 字段可拆 |
+| 缓存写入 | `usage.cacheWriteTokens` | 实测所有事件恒为 0（DeepSeek 不单独报缓存创建），若某个 provider 报了，按未命中价计 |
+
+只有**成功返回**的 `assistant/message` 带 usage。失败的请求（例如 401）落在 `assistant/attempt` 上，usage 全 0，因此**不计费**——这一点与实际账单一致。同一 `turn/step` 重复上报时会用后一次替换前一次（重试不重复计费）。
+
+联网搜索按次计费（默认 ¥0.005/次，`searchFreeUntil` 之前免费），自动压缩摘要的 LLM 花费单列为「压缩摘要」。
+
 ## 配置示例
 
 在 profile 的 `cordis.patch.yml`（`%USERPROFILE%\.dsh\profiles\<profile>\`）里给 `spend-meter` 行加 `config`：

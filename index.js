@@ -50,6 +50,8 @@ const PRO_PRICE = {
   offPeak: { cacheHit: 0.15, cacheMiss: 4.5, output: 13.5 },
 }
 
+const MODEL_FAMILY_PRICE = { flash: FLASH_PRICE, pro: PRO_PRICE }
+
 const DEFAULT_PRICING = {
   currency: 'CNY',
   models: {
@@ -177,7 +179,7 @@ function pickPriceTable(model, pricing) {
   const aliased = trimmed === key ? undefined : pricing.models[trimmed]
   if (aliased) return { table: aliased, estimated: false }
   if (!/deepseek/.test(key)) return undefined
-  const family = /flash/.test(trimmed) ? FLASH_PRICE : /pro/.test(trimmed) ? PRO_PRICE : undefined
+  const family = /flash/.test(trimmed) ? MODEL_FAMILY_PRICE.flash : /pro/.test(trimmed) ? MODEL_FAMILY_PRICE.pro : undefined
   return family ? { table: family, estimated: true } : undefined
 }
 
@@ -469,12 +471,33 @@ function summarise(state, pricing, wallet, budget) {
 
 //#endregion
 
+/**
+ * Accept a "flat" tariff — `{ cacheHit, cacheMiss, output }` — and spread it over
+ * both windows. Providers outside the peak/off-peak scheme bill one rate all day,
+ * and making them write the same object twice is a needless trap.
+ */
+function normaliseFlatPrice(table) {
+  if (!table || typeof table !== 'object') return undefined
+  const price = {
+    cacheHit: finite(table.cacheHit),
+    cacheMiss: finite(table.cacheMiss),
+    output: finite(table.output),
+  }
+  if (!price.cacheMiss && !price.cacheHit && !price.output) return undefined
+  return { peak: price, offPeak: price }
+}
+
 /** Merge the row config over the built-in tariff. */
 function resolvePricing(config) {
   const source = config && typeof config === 'object' ? config : {}
   const models = { ...DEFAULT_PRICING.models }
   if (source.models && typeof source.models === 'object') {
     for (const [model, table] of Object.entries(source.models)) {
+      const flat = normaliseFlatPrice(table)
+      if (flat) {
+        models[model] = flat
+        continue
+      }
       if (table && typeof table === 'object' && table.peak && table.offPeak) models[model] = table
     }
   }

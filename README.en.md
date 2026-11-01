@@ -76,6 +76,28 @@ Anything the plugin diagnoses about itself is shown in the "Plugin problem" bloc
 
 Units: CNY per million tokens, formatted as "peak / off-peak". Lookup is three steps: an exact model name, then the same name with a date or version tail stripped (`-1017`, `-20250929`), and only then the model family — a `deepseek` name containing `flash` bills at the flash rate and one containing `pro` at the pro rate. When that third step is used the popover says "Estimated at the model-family rate: <model>". Everything else is collected into `unpriced` and excluded from the totals.
 
+An entry in `config.models` accepts either the `peak` / `offPeak` shape above or a **flat** tariff that applies all day — handy for third-party channels that do not split the day:
+
+```yaml
+    models:
+      deepseek-v4.1-flash-1017: { cacheHit: 0.02, cacheMiss: 1, output: 4 }   # flat, same peak and off-peak
+```
+
+## What the numbers count
+
+Every line comes from the usage events DSH already records; no request goes to the platform's billing API.
+
+| Line | Source | Note |
+| --- | --- | --- |
+| Uncached input | `usage.inputTokens` | Real logs satisfy `totalTokens = inputTokens + outputTokens + cacheReadTokens`, so this is the **uncached** share, never the whole prompt |
+| Cached input | `usage.cacheReadTokens` | Billed at the hit rate; also produces "saved by the cache" = what those tokens would have cost at the miss rate |
+| Output | `usage.outputTokens` | A reasoning model that folds thinking into output is billed here too; the usage object has no separate reasoning field to split out |
+| Cache write | `usage.cacheWriteTokens` | Zero in every event measured (DeepSeek does not report cache creation separately); billed at the miss rate if a provider ever reports it |
+
+Only a **successful** `assistant/message` carries usage. A failed request (a 401, say) lands on `assistant/attempt` with all-zero usage and is therefore **not billed** — which matches a real invoice. When the same `turn/step` is reported twice, the later report replaces the earlier one, so a retry never double counts.
+
+Web search is billed per call (default ¥0.005, free before `searchFreeUntil`), and the LLM spend of an auto-compaction summary is listed separately as "compaction".
+
 ## Configuration example
 
 Add a `config` block to the `spend-meter` row in the profile's `cordis.patch.yml` (`%USERPROFILE%\.dsh\profiles\<profile>\`):
