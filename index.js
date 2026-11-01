@@ -21,8 +21,13 @@ const DIAG_PATH = 'C:/Users/30617/Desktop/Deepseek_QQ/.tmp/spend-meter-host.json
  * and persisted next to the profile: a restart must not reset "spent today".
  */
 const LEDGER_FILE = (() => {
+  const explicit = process.env.SPEND_METER_LEDGER
+  if (explicit) return explicit
   const base = process.env.DSH_PROFILE_DIR
-  return base ? `${base.replace(/[\\/]+$/, '')}/spend-meter-ledger.json` : null
+  if (base) return `${base.replace(/[\\/]+$/, '')}/spend-meter-ledger.json`
+  // The desktop Host starts without DSH_PROFILE_DIR, so fall back to the user home.
+  const home = process.env.USERPROFILE || process.env.HOME
+  return home ? `${home.replace(/[\\/]+$/, '').replace(/\\/g, '/')}/.dsh/spend-meter-ledger.json` : null
 })()
 
 /** Days kept in the ledger; older buckets are dropped on every write. */
@@ -730,8 +735,9 @@ export function apply(ctx, config) {
         viewSchema: PASS_THROUGH,
         view: (state) => {
           diag.viewCalls = (diag.viewCalls ?? 0) + 1
-          diag.wallet = wallet
+          diag.wallet = wallet.status ?? wallet
           diag.limits = pricing.limits
+          diag.liveKeys = live.size
           diag.budget = budgetView(state)
           const now = Date.now()
           if (diag.writtenAt === undefined || now - diag.writtenAt > 800) {

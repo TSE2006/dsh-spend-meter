@@ -846,10 +846,22 @@ window.__ModuleLoader__.load({
           )
         : null
 
+      const costTone = (() => {
+        const entries = [budget?.day, budget?.month].filter(Boolean)
+        if (entries.some((entry) => entry.ratio >= 1)) return 'danger'
+        if (entries.some((entry) => entry.ratio >= warnRatio)) return 'warn'
+        return undefined
+      })()
+      const budgetTitle = budget?.day
+        ? ` · ${t('panel.budgetToday')} ${budgetPercent(budget.day)}`
+        : undefined
+
       return {
         chipCost: view === undefined || view === null ? '—' : `${symbol}${formatMoney(total)}`,
         balanceLabel,
         balanceTone,
+        costTone,
+        budgetTitle,
         peak,
         panel,
       }
@@ -922,11 +934,13 @@ window.__ModuleLoader__.load({
         })
       } catch (error) {
         note('render', error)
-        model = { chipCost: '—', balanceLabel: '—', balanceTone: undefined, peak: false, panel: null }
+        model = { chipCost: '—', balanceLabel: '—', balanceTone: undefined, costTone: undefined, budgetTitle: undefined, peak: false, panel: null }
       }
 
       const iconClass = model.peak ? 'sm-tone-peak' : undefined
       const balanceClass = model.balanceTone === undefined ? undefined : `sm-tone-${model.balanceTone}`
+      const costClass = model.costTone === undefined ? 'sm-pill-label' : `sm-pill-label sm-tone-${model.costTone}`
+      const pillTitle = `${t('pill.title')}${model.budgetTitle === undefined ? '' : model.budgetTitle}`
       const icon = h(
         'span',
         { className: iconClass === undefined ? 'sm-icon' : `sm-icon ${iconClass}` },
@@ -943,15 +957,15 @@ window.__ModuleLoader__.load({
             className: 'sm-pill',
             'aria-haspopup': 'dialog',
             'aria-expanded': open,
-            'aria-label': t('pill.title'),
-            title: t('pill.title'),
+            'aria-label': pillTitle,
+            title: pillTitle,
             onClick: () => {
               setOpen(!open)
               if (!open) walletSource.refresh()
             },
           },
           icon,
-          h('span', { className: 'sm-pill-label' }, `${model.chipCost} ${t('pill.cost')}`),
+          h('span', { className: costClass }, `${model.chipCost} ${t('pill.cost')}`),
           h('span', { className: 'sm-sep', 'aria-hidden': true }, '·'),
           h(
             'span',

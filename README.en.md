@@ -31,7 +31,7 @@ The package name is fixed to `@local/spend-meter` (the local-package convention)
 | Ledger · cost | Uncached input, cached input, output, web search, auto-compaction summaries — each with its amount and token count |
 | Ledger · cache | Money saved by cache hits, and what the same tokens would have cost without a cache |
 | Ledger · balance | Top-up balance + bonus balance, and roughly how many more turns it can pay for at the current pace |
-| Ledger · budget | Today / this month spent vs. limit (only with `budget` configured), yellow at 80%, red with a notice once exceeded |
+| Ledger · budget | Today / this month spent vs. limit (only with `budget` configured), yellow at 80%, red with a notice once exceeded; the figure above the composer turns the same colour, and its tooltip carries today's percentage |
 | Ledger · models | Cost split per model (shown only when a session used more than one) |
 | Ledger · turns | The cost of each of the last 8 turns, expandable to the whole conversation |
 | Ledger · links | Jump to the DeepSeek platform's usage / top-up pages |
@@ -53,7 +53,7 @@ That call is **not declared in `inject`**; it is resolved at runtime through `ct
 
 **Budget**: the projection state carries a `days` map bucketed by Beijing date; every event adds only its **cost delta** to that event's own day (a retry that replaces an attempt subtracts, so nothing is double counted). The Host half then sums those buckets across sessions into today / this month:
 
-- Persisted file: `spend-meter-ledger.json` in `%DSH_PROFILE_DIR%` (last 70 days kept), so restarts continue where the last run stopped.
+- Persisted file: `%USERPROFILE%\.dsh\spend-meter-ledger.json` (last 70 days kept), so restarts continue where the last run stopped. When `DSH_PROFILE_DIR` is set the file lives there instead, and `SPEND_METER_LEDGER` overrides the path outright.
 - Merge order: on-disk ledger → sessions seen by this process (`sessionProjections.onChanged` pushes absolute maps) → the current session's own `days` (applied last, so the newest event is never missing).
 - Without `budget` configured the field is absent and the popover shows no budget section.
 
