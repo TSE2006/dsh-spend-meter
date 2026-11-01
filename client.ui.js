@@ -612,9 +612,12 @@ window.__ModuleLoader__.load({
       }
       const budgetPercent = (entry) => `${Math.round((entry?.ratio ?? 0) * 100)}%`
       const sinceDate = budget && typeof budget.since === 'string' ? budget.since.slice(0, 10) : undefined
-      const budgetNote = budget && sinceDate && budget.today && sinceDate.slice(0, 7) === budget.today.slice(0, 7)
-        ? t('panel.budgetSince', { date: sinceDate })
-        : undefined
+      // Only worth saying when bookkeeping started mid-month: on the first of the
+      // month the "this month" figure is complete anyway.
+      const startedMidMonth = sinceDate !== undefined && budget.today !== undefined
+        && sinceDate.slice(0, 7) === budget.today.slice(0, 7)
+        && sinceDate !== `${budget.today.slice(0, 7)}-01`
+      const budgetNote = startedMidMonth ? t('panel.budgetSince', { date: sinceDate }) : undefined
 
       let runsLeft
       if (balanceInfo.status === 'ready' && turns.length > 0) {
