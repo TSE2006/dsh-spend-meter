@@ -15,6 +15,19 @@ export const inject = ['sessionProjections']
 /** Breadcrumb file for Host-side wiring failures (diagnostics only). */
 const DIAG_PATH = 'C:/Users/30617/Desktop/Deepseek_QQ/.tmp/spend-meter-host.json'
 
+/**
+ * Rolling day ledger. Budgets are per calendar day and per calendar month, but a
+ * projection only ever sees one conversation, so the totals are accumulated here
+ * and persisted next to the profile: a restart must not reset "spent today".
+ */
+const LEDGER_FILE = (() => {
+  const base = process.env.DSH_PROFILE_DIR
+  return base ? `${base.replace(/[\\/]+$/, '')}/spend-meter-ledger.json` : null
+})()
+
+/** Days kept in the ledger; older buckets are dropped on every write. */
+const LEDGER_KEEP_DAYS = 70
+
 /** Both schemas are validated with `.parse()` only, so an identity schema suffices. */
 const PASS_THROUGH = { parse: (value) => value }
 
@@ -49,6 +62,8 @@ const DEFAULT_PRICING = {
   searchFreeUntil: Date.parse('2026-11-01T00:00:00+08:00'),
   /** Keep at most this many per-turn entries; older turns fold into the total. */
   turnHistory: 120,
+  /** Fraction of a budget that turns the row amber before it is over. */
+  warnRatio: 0.8,
 }
 
 const SEARCH_TOOLS = new Set(['web_search', 'web_fetch'])
@@ -92,6 +107,32 @@ function bucketsFromUsage(usage) {
 }
 
 const money = (value) => Math.round((Number.isFinite(value) ? value : 0) * 1e6) / 1e6
+
+/** Every priced yuan this conversation has cost so far, including hidden work. */
+const costTotal = (state) =>
+  state.cost.miss + state.cost.hit + state.cost.out + state.hidden.cost + state.search.cost
+
+/** Add (or subtract) one amount on one day bucket. */
+function bumpDay(days, date, delta) {
+  if (typeof date !== 'string' || !Number.isFinite(delta) || delta === 0) return days ?? {}
+  const next = { ...(days ?? {}) }
+  const value = (next[date] ?? 0) + delta
+  if (Math.abs(value) < 1e-9) delete next[date]
+  else next[date] = Math.round(value * 1e6) / 1e6
+  return next
+}
+
+/** Drop buckets older than the retention window. */
+function pruneDays(days, keepFrom) {
+  const next = {}
+  for (const [date, amount] of Object.entries(days ?? {})) {
+    if (typeof date !== 'string' || date < keepFrom) continue
+    if (typeof amount !== 'number' || !Number.isFinite(amount)) continue
+    if (Math.abs(amount) < 1e-9) continue
+    next[date] = money(amount)
+  }
+  return next
+}
 
 //#endregion
 
@@ -157,6 +198,10 @@ function emptyState() {
     hidden: { count: 0, cost: 0 },
     models: {},
     turns: {},
+    /** Beijing-time day buckets of this conversation's own spend. */
+    days: {},
+    /** Filled from the Session header so the ledger can tell its own row apart. */
+    sessionId: undefined,
     search: { calls: 0, cost: 0 },
     last: null,
   }
@@ -336,7 +381,7 @@ function applyToolCall(state, event, pricing) {
 
 //#region view
 
-function summarise(state, pricing, wallet) {
+function summarise(state, pricing, wallet, budget) {
   const models = []
   for (const [modelKey, entry] of Object.entries(state.models)) {
     const total = entry.cost.miss + entry.cost.hit + entry.cost.out
@@ -380,6 +425,9 @@ function summarise(state, pricing, wallet) {
     unpriced: models.filter((entry) => !entry.priced).map((entry) => entry.id),
     turns: kept,
     turnCount: turns.length,
+    /** Per-day spend of this conversation, so the Client can render its own slice. */
+    days: state.days ?? {},
+    budget: budget ?? null,
     wallet: wallet ?? { status: 'loading' },
     pricing: {
       windows: pricing.windows,
@@ -403,6 +451,8 @@ function resolvePricing(config) {
   }
   const windows = Array.isArray(source.windows) && source.windows.length > 0 ? source.windows : DEFAULT_PRICING.windows
   const holidays = Array.isArray(source.holidays) ? source.holidays : DEFAULT_PRICING.holidays
+  const budget = source.budget && typeof source.budget === 'object' ? source.budget : {}
+  const limit = (value) => (Number.isFinite(value) && value > 0 ? value : 0)
   return {
     currency: typeof source.currency === 'string' ? source.currency : DEFAULT_PRICING.currency,
     models,
@@ -412,6 +462,14 @@ function resolvePricing(config) {
     searchPerCall: Number.isFinite(source.searchPerCall) ? source.searchPerCall : DEFAULT_PRICING.searchPerCall,
     searchFreeUntil: Number.isFinite(source.searchFreeUntil) ? source.searchFreeUntil : DEFAULT_PRICING.searchFreeUntil,
     turnHistory: Number.isFinite(source.turnHistory) ? source.turnHistory : DEFAULT_PRICING.turnHistory,
+    limits: {
+      daily: limit(budget.daily),
+      monthly: limit(budget.monthly),
+      warnRatio:
+        Number.isFinite(budget.warnRatio) && budget.warnRatio > 0 && budget.warnRatio < 1
+          ? budget.warnRatio
+          : DEFAULT_PRICING.warnRatio,
+    },
   }
 }
 
@@ -501,16 +559,8 @@ export function apply(ctx, config) {
       }
     }
 
-    const definition = {
-      key: 'spendMeter',
-      version: 1,
-      stateVersion: 1,
-      stateSchema: PASS_THROUGH,
-      init: () => emptyState(),
-      apply(state, event) {
-        if (!event || typeof event !== 'object') return state
-        diag.applyCalls = (diag.applyCalls ?? 0) + 1
-        diag.lastEvent = event.type
+    /** Pure fold: one event in, the next state out. The ledger lives outside it. */
+    const fold = (state, event) => {
         switch (event.type) {
           case 'llm/retry-started': {
             if (!state.last) return state
@@ -529,18 +579,166 @@ export function apply(ctx, config) {
           default:
             return state
         }
+    }
+
+    //#region ledger
+
+    /**
+     * Cross-session day totals. `disk` is what survived the last restart, `live`
+     * is every session this process has seen a view of. Values are absolute day
+     * maps, so replaying a session log just overwrites itself instead of doubling.
+     */
+    const disk = { startedAt: undefined, sessions: {} }
+    const live = new Map()
+    let fsLoad = null
+    let writeTimer = null
+
+    const loadFs = () => {
+      if (fsLoad === null) fsLoad = import('node:fs')
+      return fsLoad
+    }
+
+    if (LEDGER_FILE) {
+      try {
+        loadFs()
+          .then((fs) => {
+            const text = fs.readFileSync(LEDGER_FILE, 'utf8')
+            const parsed = JSON.parse(text)
+            if (parsed && typeof parsed === 'object') {
+              if (typeof parsed.startedAt === 'string') disk.startedAt = parsed.startedAt
+              if (parsed.sessions && typeof parsed.sessions === 'object') disk.sessions = parsed.sessions
+            }
+          })
+          .catch(() => {
+            // a missing ledger simply starts empty
+          })
+      } catch {
+        // diagnostics are best effort
+      }
+    }
+
+    // First run has no file yet; the Client shows "counting since <date>".
+    if (disk.startedAt === undefined) disk.startedAt = new Date().toISOString()
+
+    const ledgerSnapshot = () => {
+      const keepFrom = beijingMoment(Date.now() - LEDGER_KEEP_DAYS * DAY_MS).date
+      const sessions = {}
+      const put = (id, days) => {
+        const pruned = pruneDays(days, keepFrom)
+        if (Object.keys(pruned).length > 0) sessions[id] = { days: pruned }
+      }
+      for (const [id, entry] of Object.entries(disk.sessions ?? {})) put(id, entry && entry.days)
+      for (const [id, days] of live) put(id, days)
+      return { version: 1, startedAt: disk.startedAt ?? new Date().toISOString(), sessions }
+    }
+
+    const persistLedger = () => {
+      if (!LEDGER_FILE || writeTimer !== null) return
+      try {
+        writeTimer = setTimeout(() => {
+          writeTimer = null
+          try {
+            const payload = JSON.stringify(ledgerSnapshot())
+            loadFs()
+              .then((fs) => {
+                try {
+                  fs.mkdirSync(LEDGER_FILE.slice(0, LEDGER_FILE.lastIndexOf('/')), { recursive: true })
+                  fs.writeFileSync(LEDGER_FILE, payload)
+                } catch {
+                  // a read-only profile must not break the meter
+                }
+              })
+              .catch(() => {})
+          } catch {
+            // serialisation is best effort
+          }
+        }, 2000)
+        if (writeTimer && typeof writeTimer.unref === 'function') writeTimer.unref()
+      } catch {
+        // timers are best effort
+      }
+    }
+
+    /** Sum every known session's day map, with the caller's own state winning. */
+    const dayTotals = (selfId, selfDays) => {
+      const totals = new Map()
+      const add = (days) => {
+        if (!days || typeof days !== 'object') return
+        for (const [date, amount] of Object.entries(days)) {
+          if (!Number.isFinite(amount)) continue
+          totals.set(date, (totals.get(date) ?? 0) + amount)
+        }
+      }
+      for (const [id, entry] of Object.entries(disk.sessions ?? {})) {
+        if (selfId !== undefined && id === selfId) continue
+        if (live.has(id)) continue
+        add(entry && entry.days)
+      }
+      for (const [id, days] of live) {
+        if (selfId !== undefined && id === selfId) continue
+        add(days)
+      }
+      add(selfDays)
+      return totals
+    }
+
+    /** The budget block the Client renders; absent when no limit is configured. */
+    const budgetView = (state) => {
+      if (!pricing.limits.daily && !pricing.limits.monthly) return null
+      const totals = dayTotals(state.sessionId, state.days)
+      const today = beijingMoment(Date.now()).date
+      const month = today.slice(0, 7)
+      let daySpent = 0
+      let monthSpent = 0
+      for (const [date, amount] of totals) {
+        if (date === today) daySpent += amount
+        if (date.startsWith(month)) monthSpent += amount
+      }
+      const block = (limit, spent) => (limit > 0 ? { limit: money(limit), spent: money(spent), ratio: limit > 0 ? money(spent / limit) : 0 } : null)
+      return {
+        currency: pricing.currency,
+        warnRatio: pricing.limits.warnRatio,
+        since: disk.startedAt ?? null,
+        today,
+        day: block(pricing.limits.daily, daySpent),
+        month: block(pricing.limits.monthly, monthSpent),
+      }
+    }
+
+    //#endregion
+
+    const definition = {
+      key: 'spendMeter',
+      version: 1,
+      stateVersion: 2,
+      stateSchema: PASS_THROUGH,
+      init: (header) => ({ ...emptyState(), sessionId: header?.id ?? header?.sessionId }),
+      apply(state, event) {
+        if (!event || typeof event !== 'object') return state
+        diag.applyCalls = (diag.applyCalls ?? 0) + 1
+        diag.lastEvent = event.type
+        const next = fold(state, event)
+        if (Object.is(next, state)) return state
+        // Bucket the *change* rather than the sample, so a retry that replaces an
+        // attempt subtracts from the same day instead of double counting.
+        const delta = costTotal(next) - costTotal(state)
+        if (!delta) return next
+        const at = typeof event.time === 'number' ? event.time : Date.now()
+        return { ...next, days: bumpDay(next.days, beijingMoment(at).date, delta) }
       },
       wire: {
         viewSchema: PASS_THROUGH,
         view: (state) => {
           diag.viewCalls = (diag.viewCalls ?? 0) + 1
           diag.wallet = wallet
+          diag.limits = pricing.limits
+          diag.budget = budgetView(state)
           const now = Date.now()
           if (diag.writtenAt === undefined || now - diag.writtenAt > 800) {
             diag.writtenAt = now
             reportDiag(diag)
           }
-          return summarise(state, pricing, wallet)
+          return summarise(state, pricing, wallet, budgetView(state))
         },
       },
     }
@@ -559,6 +757,33 @@ export function apply(ctx, config) {
     } catch (error) {
       diag.register = 'threw'
       diag.error = String((error && error.stack) || error)
+    }
+
+    // Every published view is an absolute per-session day map, so remembering the
+    // last one is enough to keep the cross-session ledger correct across replays.
+    try {
+      if (typeof projections.onChanged === 'function') {
+        ctx.effect(
+          () =>
+            projections.onChanged((session, key, value) => {
+              try {
+                if (key !== 'spendMeter' || !value || typeof value !== 'object') return
+                const id = session?.id ?? session?.header?.id
+                if (typeof id !== 'string' || !value.days) return
+                live.set(id, value.days)
+                persistLedger()
+              } catch (error) {
+        diag.ledger = String((error && error.message) || error)
+              }
+            }),
+          'spend-meter: ledger',
+        )
+        diag.ledger = 'ok'
+      } else {
+        diag.ledger = 'no listener'
+      }
+    } catch (error) {
+      diag.ledger = String((error && error.message) || error)
     }
 
     diag.stage = 'done'

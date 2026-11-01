@@ -89,6 +89,12 @@ window.__ModuleLoader__.load({
       'panel.balanceFailed': 'Balance unavailable',
       'panel.balanceLoading': 'Loading balance…',
       'panel.problems': 'Plugin problem',
+      'panel.budgetTitle': 'Budget',
+      'panel.budgetToday': 'Today',
+      'panel.budgetMonth': 'This month',
+      'panel.budgetOverDay': 'Today’s budget is used up',
+      'panel.budgetOverMonth': 'This month’s budget is used up',
+      'panel.budgetSince': 'Counting since {date}',
       'time.hours': '{hours}h {minutes}m',
       'time.minutes': '{minutes}m',
       'turn.label': 'T{turn}',
@@ -127,6 +133,12 @@ window.__ModuleLoader__.load({
       'panel.balanceFailed': '余额获取失败',
       'panel.balanceLoading': '正在读取余额…',
       'panel.problems': '插件异常',
+      'panel.budgetTitle': '预算',
+      'panel.budgetToday': '今日',
+      'panel.budgetMonth': '本月',
+      'panel.budgetOverDay': '今日预算已用完',
+      'panel.budgetOverMonth': '本月预算已用完',
+      'panel.budgetSince': '自 {date} 起统计',
       'time.hours': '{hours}小时{minutes}分',
       'time.minutes': '{minutes}分',
       'turn.label': 'T{turn}',
@@ -588,6 +600,19 @@ window.__ModuleLoader__.load({
       }
       const unpriced = view && Array.isArray(view.unpriced) ? view.unpriced : []
 
+      const budget = view && view.budget ? view.budget : undefined
+      const warnRatio = budget && Number.isFinite(budget.warnRatio) ? budget.warnRatio : 0.8
+      const budgetTone = (entry) => {
+        if (!entry) return undefined
+        if (entry.ratio >= 1) return 'danger'
+        return entry.ratio >= warnRatio ? 'warn' : undefined
+      }
+      const budgetPercent = (entry) => `${Math.round((entry?.ratio ?? 0) * 100)}%`
+      const sinceDate = budget && typeof budget.since === 'string' ? budget.since.slice(0, 10) : undefined
+      const budgetNote = budget && sinceDate && budget.today && sinceDate.slice(0, 7) === budget.today.slice(0, 7)
+        ? t('panel.budgetSince', { date: sinceDate })
+        : undefined
+
       let runsLeft
       if (balanceInfo.status === 'ready' && turns.length > 0) {
         const average = turns.reduce((sum, entry) => sum + entry.cost, 0) / turns.length
@@ -653,6 +678,41 @@ window.__ModuleLoader__.load({
                     null,
                     ` ${t('panel.cacheSavedAlt', { amount: `${symbol}${formatMoney(view.withoutCache)}` })}`,
                   ),
+                )
+              : null,
+
+            budget && (budget.day || budget.month)
+              ? h(
+                  'div',
+                  null,
+                  h('div', { className: 'sm-section' }, t('panel.budgetTitle')),
+                  h(
+                    'dl',
+                    { className: 'sm-rows' },
+                    budget.day
+                      ? h(DetailRow, {
+                          label: t('panel.budgetToday'),
+                          hint: budgetPercent(budget.day),
+                          value: `${symbol}${formatMoney(budget.day.spent)} / ${symbol}${formatMoney(budget.day.limit)}`,
+                          tone: budgetTone(budget.day),
+                        })
+                      : null,
+                    budget.month
+                      ? h(DetailRow, {
+                          label: t('panel.budgetMonth'),
+                          hint: budgetPercent(budget.month),
+                          value: `${symbol}${formatMoney(budget.month.spent)} / ${symbol}${formatMoney(budget.month.limit)}`,
+                          tone: budgetTone(budget.month),
+                        })
+                      : null,
+                  ),
+                  budget.day && budget.day.ratio >= 1
+                    ? h('div', { className: 'sm-note-tight sm-tone-danger' }, t('panel.budgetOverDay'))
+                    : null,
+                  budget.month && budget.month.ratio >= 1
+                    ? h('div', { className: 'sm-note-tight sm-tone-danger' }, t('panel.budgetOverMonth'))
+                    : null,
+                  budgetNote === undefined ? null : h('div', { className: 'sm-note-tight' }, budgetNote),
                 )
               : null,
 

@@ -31,6 +31,7 @@ The package name is fixed to `@local/spend-meter` (the local-package convention)
 | Ledger · cost | Uncached input, cached input, output, web search, auto-compaction summaries — each with its amount and token count |
 | Ledger · cache | Money saved by cache hits, and what the same tokens would have cost without a cache |
 | Ledger · balance | Top-up balance + bonus balance, and roughly how many more turns it can pay for at the current pace |
+| Ledger · budget | Today / this month spent vs. limit (only with `budget` configured), yellow at 80%, red with a notice once exceeded |
 | Ledger · models | Cost split per model (shown only when a session used more than one) |
 | Ledger · turns | The cost of each of the last 8 turns, expandable to the whole conversation |
 | Ledger · links | Jump to the DeepSeek platform's usage / top-up pages |
@@ -49,6 +50,12 @@ The package name is fixed to `@local/spend-meter` (the local-package convention)
 The projection view still carries a `wallet` field as a fallback while the Remote has not answered. It cannot be the only source: a projection only recomputes and broadcasts when a **session event** replaces its state reference, while wallet polling produces neither an event nor a state change — after a cold start the page would sit on the `loading` snapshot captured in the baseline forever.
 
 That call is **not declared in `inject`**; it is resolved at runtime through `ctx.get`. Cordis has no optional injection, so hard-injecting a service that is not mounted yet leaves the entry `pending`, and the desktop web boot treats "any entry not active" as a fatal error.
+
+**Budget**: the projection state carries a `days` map bucketed by Beijing date; every event adds only its **cost delta** to that event's own day (a retry that replaces an attempt subtracts, so nothing is double counted). The Host half then sums those buckets across sessions into today / this month:
+
+- Persisted file: `spend-meter-ledger.json` in `%DSH_PROFILE_DIR%` (last 70 days kept), so restarts continue where the last run stopped.
+- Merge order: on-disk ledger → sessions seen by this process (`sessionProjections.onChanged` pushes absolute maps) → the current session's own `days` (applied last, so the newest event is never missing).
+- Without `budget` configured the field is absent and the popover shows no budget section.
 
 ## Robustness
 
@@ -80,6 +87,10 @@ Add a `config` block to the `spend-meter` row in the profile's `cordis.patch.yml
     searchPerCall: 0.005
     turnHistory: 120
     currency: CNY
+    budget:
+      daily: 20            # today's limit, same unit as currency; omit or 0 for no limit
+      monthly: 200         # this month's limit
+      warnRatio: 0.8       # turns yellow at this share, red with a notice past 100%
     models:
       deepseek-flash:
         peak: { cacheHit: 0.04, cacheMiss: 2, output: 8 }
@@ -92,7 +103,7 @@ Add a `config` block to the `spend-meter` row in the profile's `cordis.patch.yml
 
 | File | Purpose |
 | --- | --- |
-| `index.js` | Host half: the `spendMeter` projection (the ledger) plus the wallet fallback poll |
+| `index.js` | Host half: the `spendMeter` projection (cost ledger + day buckets), the cross-session ledger, and the wallet fallback poll |
 | `client.ui.js` | Client half source (pill, popover, CSS, dictionaries) |
 | `client.js` | Deployment artifact, identical to `client.ui.js` |
 | `locale/{en,zh}.json` | Title and description shown in the plugin manager |
@@ -110,4 +121,5 @@ After editing the source: `Copy-Item client.ui.js client.js -Force`. DSH's clien
 - **Search billing** starts at 2026-11-01 00:00 Beijing time, per the official announcement; earlier `web_search` / `web_fetch` calls are counted as free.
 - **The balance needs a platform account**: when DSH uses an API key and is not signed in to a DeepSeek platform account, the wallet cannot be read — the balance slot shows `—`, the popover explains why, and cost tracking is unaffected.
 - **This conversation only**: for a cross-session total, use the platform usage page (linked at the bottom of the popover).
+- **Budgets count from the day the plugin started bookkeeping**: the ledger only accumulates events this plugin saw, so spending from before installation is missing and the first "this month" figure reads low. The popover says "Counting since <date>" so you know; that line disappears once the date falls into a previous month.
 - The "roughly N more turns" figure extrapolates from this session's average cost per turn, so it drifts in long conversations.
