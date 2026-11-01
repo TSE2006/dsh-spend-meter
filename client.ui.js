@@ -85,6 +85,7 @@ window.__ModuleLoader__.load({
       'panel.usage': 'Platform usage',
       'panel.topUp': 'Top up',
       'panel.unpriced': 'No tariff for {models}',
+      'panel.estimated': 'Estimated at the model-family rate: {models}',
       'panel.balanceSignedOut': 'Sign in to see the balance',
       'panel.balanceFailed': 'Balance unavailable',
       'panel.balanceLoading': 'Loading balance…',
@@ -129,6 +130,7 @@ window.__ModuleLoader__.load({
       'panel.usage': '平台用量',
       'panel.topUp': '去充值',
       'panel.unpriced': '{models} 没有价目，未计价',
+      'panel.estimated': '按模型族近似计价：{models}',
       'panel.balanceSignedOut': '未登录，无法读取余额',
       'panel.balanceFailed': '余额获取失败',
       'panel.balanceLoading': '正在读取余额…',
@@ -599,6 +601,7 @@ window.__ModuleLoader__.load({
           : name
       }
       const unpriced = view && Array.isArray(view.unpriced) ? view.unpriced : []
+      const estimated = view && Array.isArray(view.estimated) ? view.estimated : []
 
       const budget = view && view.budget ? view.budget : undefined
       const warnRatio = budget && Number.isFinite(budget.warnRatio) ? budget.warnRatio : 0.8
@@ -775,6 +778,10 @@ window.__ModuleLoader__.load({
 
             unpriced.length > 0
               ? h('div', { className: 'sm-problem' }, t('panel.unpriced', { models: unpriced.join(', ') }))
+              : null,
+
+            estimated.length > 0
+              ? h('div', { className: 'sm-note-tight' }, t('panel.estimated', { models: estimated.join(', ') }))
               : null,
 
             turns.length > 0

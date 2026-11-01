@@ -74,7 +74,7 @@ Anything the plugin diagnoses about itself is shown in the "Plugin problem" bloc
 | deepseek-flash (including the v4-flash aliases) | ¥0.04 / ¥0.02 | ¥2 / ¥1 | ¥8 / ¥4 |
 | deepseek-v4-pro | ¥0.30 / ¥0.15 | ¥9 / ¥4.5 | ¥27 / ¥13.5 |
 
-Units: CNY per million tokens, formatted as "peak / off-peak". Models outside the table are collected into `unpriced` and excluded from the totals.
+Units: CNY per million tokens, formatted as "peak / off-peak". Lookup is three steps: an exact model name, then the same name with a date or version tail stripped (`-1017`, `-20250929`), and only then the model family — a `deepseek` name containing `flash` bills at the flash rate and one containing `pro` at the pro rate. When that third step is used the popover says "Estimated at the model-family rate: <model>". Everything else is collected into `unpriced` and excluded from the totals.
 
 ## Configuration example
 

@@ -163,11 +163,29 @@ function tierOf(ms, pricing) {
   return isPeak(ms, pricing) ? 'peak' : 'offPeak'
 }
 
+/**
+ * Resolve a price table for a model id. Exact matches win; a dated or versioned
+ * suffix is stripped next; only then does it fall back to the model family, and
+ * only for names that clearly belong to it — an unknown service is left unpriced
+ * rather than silently billed at someone else's rate.
+ */
+function pickPriceTable(model, pricing) {
+  const exact = pricing.models[model]
+  if (exact) return { table: exact, estimated: false }
+  const key = String(model || '').toLowerCase()
+  const trimmed = key.replace(/[-@](\d{3,4}|\d{4}-\d{2}-\d{2}|v\d+(?:\.\d+)?)$/, '')
+  const aliased = trimmed === key ? undefined : pricing.models[trimmed]
+  if (aliased) return { table: aliased, estimated: false }
+  if (!/deepseek/.test(key)) return undefined
+  const family = /flash/.test(trimmed) ? FLASH_PRICE : /pro/.test(trimmed) ? PRO_PRICE : undefined
+  return family ? { table: family, estimated: true } : undefined
+}
+
 /** Priced sample in CNY, split by the buckets the ledger shows. */
 function priceOf(buckets, model, tier, pricing) {
-  const table = pricing.models[model]
-  if (!table) return undefined
-  const price = table[tier]
+  const resolved = pickPriceTable(model, pricing)
+  if (!resolved) return undefined
+  const price = resolved.table[tier]
   if (!price) return undefined
   return {
     miss: ((buckets.miss + buckets.write) * price.cacheMiss) / 1e6,
@@ -175,6 +193,8 @@ function priceOf(buckets, model, tier, pricing) {
     out: (buckets.out * price.output) / 1e6,
     /** What the cache saved: the same hit tokens at the miss price. */
     saved: (buckets.hit * (price.cacheMiss - price.cacheHit)) / 1e6,
+    /** True when no entry matched exactly and the family rate was used. */
+    estimated: resolved.estimated,
   }
 }
 
@@ -311,6 +331,7 @@ function applySample(state, pricing, sample, previous) {
     return {
       ...updated,
       priced: true,
+      estimated: updated.estimated === true || priced.estimated === true,
       saved: updated.saved + priced.saved,
       cost: {
         miss: updated.cost.miss + priced.miss,
@@ -395,6 +416,7 @@ function summarise(state, pricing, wallet, budget) {
       provider: entry.provider,
       model: entry.model,
       priced: entry.priced,
+      estimated: entry.estimated === true,
       tokens: entry.tokens,
       cost: money(total),
       saved: money(entry.saved),
@@ -428,6 +450,8 @@ function summarise(state, pricing, wallet, budget) {
     search: { calls: state.search.calls, cost: money(state.search.cost) },
     models,
     unpriced: models.filter((entry) => !entry.priced).map((entry) => entry.id),
+    /** Models priced from the family rate because no entry matched exactly. */
+    estimated: models.filter((entry) => entry.priced && entry.estimated).map((entry) => entry.id),
     turns: kept,
     turnCount: turns.length,
     /** Per-day spend of this conversation, so the Client can render its own slice. */
