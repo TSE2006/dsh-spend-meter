@@ -4,6 +4,24 @@ All notable changes to this plugin are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-11-02
+
+### Added
+
+- **Effective unit rates**: each cost line now shows the rate it was charged at
+  (`1.2M × ¥2.00/M`), so the money can be checked with one multiplication. A
+  session that ran across peak and off-peak hours shows the weighted average.
+- **Per-tool and per-model breakdown**: "Web search" is split by the tool that
+  paid for it (`web_search` / `web_fetch`) and "Auto-compaction" by the model
+  that wrote each summary.
+- **Ledger export**: "Copy Markdown" and "Copy CSV" put the whole ledger
+  (lines, tokens, balance, budget, models, turns) on the clipboard.
+- **Cold-start smoke check**: `npm run smoke` loads both halves in a fresh
+  process and verifies the shipped files, the price table and locale files, a
+  bare-kernel `apply`, the one dock registration, rendering before any
+  projection arrives, and that every `t('…')` key exists in both dictionaries.
+  CI runs it on every push.
+
 ## [1.1.0] - 2026-11-02
 
 Everything below landed after the first published release.

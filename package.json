@@ -1,6 +1,6 @@
 {
   "name": "@local/spend-meter",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Shows the remaining DeepSeek balance and this conversation's spend in the composer dock",
   "keywords": [
