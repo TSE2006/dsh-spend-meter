@@ -168,9 +168,12 @@
 
 ```bash
 npm test      # = node --test "tests/*.test.mjs"
+npm run smoke # = node scripts/smoke.mjs
 ```
 
 只依赖 Node 内置的 `node:test` 与 `node:assert`，没有开发依赖。Host 半用假的投影定义直接折叠事件；Client 半把 `client.js` 当作内核那样加载（`__ModuleLoader__.load` + `factory(require)`），用最小的 React/Hook 替身渲染药丸和弹层，所以模块体、字典键、注册参数、外链 handler、预算变色都能在无浏览器的情况下覆盖。
+
+`npm run smoke` 是发布前的冷启动体检：在一个全新进程里（没有 HMR、没有会话基线）核对 `package.json` 承诺的文件都在、`pricing.json` 与 locale 能解析并结构完整、Host 半能在空内核上 `apply` 成功、Client 半能加载并注册槽位、**在投影还没到货时也能渲染**，以及客户端每个 `t('…')` 键在中英字典里都有对应项。桌面端把「任一条目未激活」当作致命错误，这几项正是那类启动事故的护栏，CI 每次都会跑。
 
 ## 已知限制
 

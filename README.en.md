@@ -168,9 +168,12 @@ After editing the source: `Copy-Item client.ui.js client.js -Force`. DSH's clien
 
 ```bash
 npm test      # = node --test "tests/*.test.mjs"
+npm run smoke # = node scripts/smoke.mjs
 ```
 
 Node's built-in `node:test` and `node:assert` only — there are no development dependencies. The host half folds events through a fake projection definition; the client half loads `client.js` exactly as the kernel does (`__ModuleLoader__.load` plus `factory(require)`) and renders the pill and popover through a minimal React/Hook stand-in. Module body, dictionary keys, registration options, link handlers and budget colouring are therefore covered without a browser.
+
+`npm run smoke` is the pre-release cold-start check: in a fresh process (no HMR, no session baseline) it verifies the files `package.json` promises exist, `pricing.json` and the locale files parse and are complete, the host half applies to a bare kernel, the client half loads and registers its slot, **it renders before any projection arrives**, and every `t('…')` key has an entry in both dictionaries. The desktop app treats "one entry did not activate" as fatal, so these are the guards against that class of startup failure, and CI runs them on every push.
 
 ## Known limits
 
