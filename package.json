@@ -1,6 +1,6 @@
 {
   "name": "@local/spend-meter",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Shows the remaining DeepSeek balance and this conversation's spend in the composer dock",
   "keywords": [
@@ -40,7 +40,8 @@
     "locale/*.json",
     "icon.svg",
     "README.md",
-    "README.en.md"
+    "README.en.md",
+    "CHANGELOG.md"
   ],
   "dsh": {
     "bundle": {

@@ -148,6 +148,7 @@ Add a `config` block to the `spend-meter` row in the profile's `cordis.patch.yml
 | `pricing.json` | The online price table, merged into the built-in one once a day |
 | `cordis.patch.yml` | Bundle insert declaration |
 | `README.md` / `README.en.md` | Chinese / English documentation |
+| `CHANGELOG.md` | Release history |
 | `docs/preview.png` | Screenshot of the pill |
 | `docs/panel.png` | Screenshot of the ledger popover |
 | `tests/projection.test.mjs` | Host half: folding tests for pricing, day buckets and the budget view |

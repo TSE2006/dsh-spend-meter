@@ -148,6 +148,7 @@
 | `pricing.json` | 在线价目表，Host 半每天拉取一次合并到内置表 |
 | `cordis.patch.yml` | bundle 插入声明 |
 | `README.md` / `README.en.md` | 中文 / 英文文档 |
+| `CHANGELOG.md` | 版本记录 |
 | `docs/preview.png` | 药丸截图 |
 | `docs/panel.png` | 账本弹层截图 |
 | `tests/projection.test.mjs` | Host 半：计价、日桶、预算视图的折叠测试 |
