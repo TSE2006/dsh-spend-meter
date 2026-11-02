@@ -382,6 +382,35 @@ test('the panel says which tariff priced the figures', async () => {
   assert.match(broken, /价目表更新失败：status=404/)
 })
 
+test('the turns-left figure follows whichever runs out first', async () => {
+  // One boot per case: the pill remembers whether it is open.
+  const panelText = async (view) => {
+    const { context, react } = await boot()
+    const translate = translateWith(context)
+    const { component } = context.registrations[0]
+    // let the wallet refresh that apply() kicked off settle
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    react.beginRender()
+    component({ t: translate, useProjection: () => view }).children[0].props.onClick()
+    react.beginRender()
+    return flatText(component({ t: translate, useProjection: () => view }).children[1])
+  }
+
+  // The average turn is about ¥0.15 and the wallet holds ¥15.34, so the wallet
+  // alone would promise ~102 turns — today's budget leaves only ¥0.80.
+  const tight = projection()
+  assert.match(await panelText(tight), /今日预算内还能聊约 5 轮/)
+
+  // Raise the limits above the wallet and the wallet becomes the limit again.
+  const roomy = projection()
+  roomy.budget = {
+    ...roomy.budget,
+    day: { limit: 1000, spent: 4.2, ratio: 0.0042 },
+    month: { limit: 10000, spent: 12.5, ratio: 0.00125 },
+  }
+  assert.match(await panelText(roomy), /按当前速度还能聊约 102 轮/)
+})
+
 test('the panel charts the last two weeks and this week’s total', async () => {
   const { context, react } = await boot()
   const translate = translateWith(context)

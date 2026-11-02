@@ -78,6 +78,8 @@ window.__ModuleLoader__.load({
       'panel.balanceTitle': 'Balance',
       'panel.bonus': 'Bonus balance',
       'panel.runsLeft': '≈ {count} more turns at this pace',
+      'panel.runsLeftDay': '≈ {count} more turns on today’s budget',
+      'panel.runsLeftMonth': '≈ {count} more turns on this month’s budget',
       'panel.models': 'By model',
       'panel.turns': 'Per turn',
       'panel.turnsMore': 'Show {count} earlier',
@@ -130,6 +132,8 @@ window.__ModuleLoader__.load({
       'panel.balanceTitle': '余额',
       'panel.bonus': '赠送余额',
       'panel.runsLeft': '按当前速度还能聊约 {count} 轮',
+      'panel.runsLeftDay': '今日预算内还能聊约 {count} 轮',
+      'panel.runsLeftMonth': '本月预算内还能聊约 {count} 轮',
       'panel.models': '按模型',
       'panel.turns': '逐轮成本',
       'panel.turnsMore': '展开更早 {count} 轮',
@@ -718,10 +722,35 @@ window.__ModuleLoader__.load({
               })
             : undefined
 
+      // How many turns the remaining money pays for. A budget can run out long
+      // before the balance does, so both are counted and the tighter one wins.
       let runsLeft
-      if (balanceInfo.status === 'ready' && turns.length > 0) {
+      let runsLeftScope = 'balance'
+      if (turns.length > 0) {
         const average = turns.reduce((sum, entry) => sum + entry.cost, 0) / turns.length
-        if (average > 0) runsLeft = Math.floor(balanceInfo.available / average)
+        if (average > 0) {
+          const candidates = []
+          if (balanceInfo.status === 'ready') {
+            candidates.push({ scope: 'balance', turns: Math.floor(balanceInfo.available / average) })
+          }
+          if (budget && budget.day) {
+            candidates.push({
+              scope: 'day',
+              turns: Math.floor(Math.max(0, budget.day.limit - budget.day.spent) / average),
+            })
+          }
+          if (budget && budget.month) {
+            candidates.push({
+              scope: 'month',
+              turns: Math.floor(Math.max(0, budget.month.limit - budget.month.spent) / average),
+            })
+          }
+          const tightest = candidates.sort((left, right) => left.turns - right.turns)[0]
+          if (tightest !== undefined) {
+            runsLeft = tightest.turns
+            runsLeftScope = tightest.scope
+          }
+        }
       }
 
       const tokensIn = (entry) => (entry.tokens?.miss || 0) + (entry.tokens?.hit || 0) + (entry.tokens?.write || 0)
@@ -879,7 +908,18 @@ window.__ModuleLoader__.load({
                 ),
 
             runsLeft !== undefined && runsLeft > 0
-              ? h('div', { className: 'sm-note-tight' }, t('panel.runsLeft', { count: runsLeft }))
+              ? h(
+                  'div',
+                  { className: 'sm-note-tight' },
+                  t(
+                    runsLeftScope === 'day'
+                      ? 'panel.runsLeftDay'
+                      : runsLeftScope === 'month'
+                        ? 'panel.runsLeftMonth'
+                        : 'panel.runsLeft',
+                    { count: runsLeft },
+                  ),
+                )
               : null,
 
             models.length > 1

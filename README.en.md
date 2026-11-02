@@ -30,7 +30,7 @@ The package name is fixed to `@local/spend-meter` (the local-package convention)
 | Ledger · time | Whether it is peak right now, and how long until the next half-price / peak window |
 | Ledger · cost | Uncached input, cached input, output, web search, auto-compaction summaries — each with its amount and token count |
 | Ledger · cache | Money saved by cache hits, and what the same tokens would have cost without a cache |
-| Ledger · balance | Top-up balance + bonus balance, and roughly how many more turns it can pay for at the current pace |
+| Ledger · balance | Top-up balance + bonus balance, and how many turns are left — with a budget configured, whichever of the wallet, today's budget or this month's budget runs out first decides the figure |
 | Ledger · budget | Today / this month spent vs. limit (only with `budget` configured), yellow at 80%, red with a notice once exceeded; the figure above the composer turns the same colour, and its tooltip carries today's percentage |
 | Budget banner | Once a budget is used up a banner appears next to the pill; close it with × and the same day (or month) stays quiet |
 | Ledger · recent | A 14-day bar chart of daily spend (today highlighted, hover a bar for its amount) and the "this week" total (weeks start on Monday, summed across sessions) |
@@ -171,4 +171,4 @@ Node's built-in `node:test` and `node:assert` only — there are no development 
 - **The balance needs a platform account**: when DSH uses an API key and is not signed in to a DeepSeek platform account, the wallet cannot be read — the balance slot shows `—`, the popover explains why, and cost tracking is unaffected.
 - **This conversation only**: for a cross-session total, use the platform usage page (linked at the bottom of the popover).
 - **Budgets count from the day the plugin started bookkeeping**: the ledger only accumulates events this plugin saw, so spending from before installation is missing and the first "this month" figure reads low. The popover says "Counting since <date>" so you know; that line disappears once the date falls into a previous month.
-- The "roughly N more turns" figure extrapolates from this session's average cost per turn, so it drifts in long conversations.
+- The "≈ N more turns" figure extrapolates from this session's average cost per turn, so it drifts in long conversations; with budgets set it names whichever limit (wallet, day, month) runs out first.
