@@ -8,7 +8,11 @@ A permanent line under the composer — `¥3.89 this chat · balance ¥19.07` �
 
 Click it and this is the bill:
 
-<img src="docs/panel.png" width="380" alt="Ledger panel: cost breakdown, cache savings, balance, per-model split, per-turn cost">
+<img src="docs/panel.png" width="380" alt="Ledger panel: cost breakdown, web search, budget, 14-day chart, balance">
+
+Below that come the per-model split, the per-turn cost and where the price table came from:
+
+<img src="docs/detail.png" width="380" alt="Lower half of the ledger: per-model split, model-family estimate note, per-turn cost, price table date">
 
 The styling deliberately follows two pieces of DSH's own UI: the pill copies `StatsPills` (the same bare-text buttons as `3 turns 228 steps · 232 tok/s` and `20.9M tok · 96% cached`), and the popover copies `stat-dialog` (the background, radius, shadow, rules and right-aligned tabular numbers of the "Token usage" card). Every design token comes from the runtime `--dsw-*` / `--dsh-*` variables, so light and dark themes follow automatically.
 
@@ -150,7 +154,8 @@ Add a `config` block to the `spend-meter` row in the profile's `cordis.patch.yml
 | `README.md` / `README.en.md` | Chinese / English documentation |
 | `CHANGELOG.md` | Release history |
 | `docs/preview.png` | Screenshot of the pill |
-| `docs/panel.png` | Screenshot of the ledger popover |
+| `docs/panel.png` | Ledger popover (top half: items, budget, chart, balance) |
+| `docs/detail.png` | Ledger popover (bottom half: per model, per turn, price table) |
 | `tests/projection.test.mjs` | Host half: folding tests for pricing, day buckets and the budget view |
 | `tests/client.test.mjs` | Client half: loads the bundle the way the kernel does, renders the pill and the popover |
 | `.github/workflows/test.yml` | Runs the suite on Node 22/24 × Linux/Windows |

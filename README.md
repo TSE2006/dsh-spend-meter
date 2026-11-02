@@ -8,7 +8,11 @@
 
 点开之后是这笔账：
 
-<img src="docs/panel.png" width="380" alt="账本面板：分项花费、缓存省下、余额、按模型、逐轮成本">
+<img src="docs/panel.png" width="380" alt="账本面板：分项花费、联网搜索、预算、近 14 天趋势、余额">
+
+往下还有按模型的花费、逐轮成本和价目表来源：
+
+<img src="docs/detail.png" width="380" alt="账本下半部分：按模型花费、按模型族近似计价提示、逐轮成本、价目表更新时间">
 
 样式刻意贴合 DSH 自带的两处 UI：药丸照 `StatsPills`（`3 轮 228 步 · 232 tok/s`、`20.9M tok · 缓存命中 96%` 同款裸文字按钮），弹层照 `stat-dialog`（「Token 用量」那张卡片的背景、圆角、阴影、分隔线、右对齐等宽数字）。全部设计令牌取自运行时的 `--dsw-*` / `--dsh-*` 变量，浅色/深色主题自动跟随。
 
@@ -150,7 +154,8 @@
 | `README.md` / `README.en.md` | 中文 / 英文文档 |
 | `CHANGELOG.md` | 版本记录 |
 | `docs/preview.png` | 药丸截图 |
-| `docs/panel.png` | 账本弹层截图 |
+| `docs/panel.png` | 账本弹层截图（上半：分项、预算、趋势、余额） |
+| `docs/detail.png` | 账本弹层截图（下半：按模型、逐轮成本、价目表） |
 | `tests/projection.test.mjs` | Host 半：计价、日桶、预算视图的折叠测试 |
 | `tests/client.test.mjs` | Client 半：按内核加载 bundle，渲染药丸与弹层 |
 | `.github/workflows/test.yml` | 在 Node 22/24 × Linux/Windows 上跑测试 |
