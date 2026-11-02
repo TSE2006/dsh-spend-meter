@@ -32,7 +32,7 @@ The package name is fixed to `@local/spend-meter` (the local-package convention)
 | --- | --- |
 | The pill | Cost of this conversation, platform balance (yellow below ¥5, red below ¥1); the ¥ icon turns yellow during peak hours and stays grey off-peak |
 | Ledger · time | Whether it is peak right now, and how long until the next half-price / peak window |
-| Ledger · cost | Uncached input, cached input, output, web search, auto-compaction summaries — each with its amount and token count |
+| Ledger · cost | Uncached input, cached input, output, web search, auto-compaction summaries — each with its amount, token count and the effective rate per million tokens (a weighted figure when peak and off-peak hours mix; multiply it out to check the money) |
 | Ledger · cache | Money saved by cache hits, and what the same tokens would have cost without a cache |
 | Ledger · balance | Top-up balance + bonus balance, and how many turns are left — with a budget configured, whichever of the wallet, today's budget or this month's budget runs out first decides the figure |
 | Ledger · budget | Today / this month spent vs. limit (only with `budget` configured), yellow at 80%, red with a notice once exceeded; the figure above the composer turns the same colour, and its tooltip carries today's percentage |

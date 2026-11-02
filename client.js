@@ -677,6 +677,20 @@ window.__ModuleLoader__.load({
           ? `${entry.provider}/${name}`
           : name
       }
+
+      // The effective rate per million tokens: cost ÷ tokens. A session that ran
+      // across peak and off-peak hours shows the weighted average, which is the
+      // rate the money on the right actually came from.
+      const rateOf = (amount, tokens) => {
+        const count = Number(tokens) || 0
+        if (count <= 0) return undefined
+        return `${symbol}${formatMoney(((Number(amount) || 0) / count) * 1e6)}/M`
+      }
+      const tokenHint = (amount, tokens) => {
+        const label = formatTokens(tokens || 0)
+        const rate = rateOf(amount, tokens)
+        return rate === undefined ? label : `${label} × ${rate}`
+      }
       const unpriced = view && Array.isArray(view.unpriced) ? view.unpriced : []
       const estimated = view && Array.isArray(view.estimated) ? view.estimated : []
 
@@ -773,17 +787,17 @@ window.__ModuleLoader__.load({
               { className: 'sm-rows' },
               h(DetailRow, {
                 label: t('panel.inputMiss'),
-                hint: formatTokens(totals.miss || 0),
+                hint: tokenHint(cost.miss, totals.miss),
                 value: `${symbol}${formatMoney(cost.miss || 0)}`,
               }),
               h(DetailRow, {
                 label: t('panel.inputHit'),
-                hint: formatTokens(totals.hit || 0),
+                hint: tokenHint(cost.hit, totals.hit),
                 value: `${symbol}${formatMoney(cost.hit || 0)}`,
               }),
               h(DetailRow, {
                 label: t('panel.output'),
-                hint: formatTokens(totals.out || 0),
+                hint: tokenHint(cost.out, totals.out),
                 value: `${symbol}${formatMoney(cost.out || 0)}`,
               }),
               view && view.search && view.search.calls > 0

@@ -411,6 +411,23 @@ test('the turns-left figure follows whichever runs out first', async () => {
   assert.match(await panelText(roomy), /按当前速度还能聊约 102 轮/)
 })
 
+test('each line shows the rate it was charged at', async () => {
+  const { context, react } = await boot()
+  const translate = translateWith(context)
+  const view = projection()
+  const { component } = context.registrations[0]
+  react.beginRender()
+  component({ t: translate, useProjection: () => view }).children[0].props.onClick()
+  react.beginRender()
+  const panel = component({ t: translate, useProjection: () => view }).children[1]
+
+  const text = flatText(panel)
+  // 1200 uncached tokens for ¥0.0024 is ¥2.00 per million; 500k cached for ¥0.01 is ¥0.02
+  assert.match(text, /1\.2k × ¥2\.00\/M/)
+  assert.match(text, /500\.0k × ¥0\.020\/M/)
+  assert.match(text, /3\.4k × ¥8\.00\/M/)
+})
+
 test('the panel charts the last two weeks and this week’s total', async () => {
   const { context, react } = await boot()
   const translate = translateWith(context)
