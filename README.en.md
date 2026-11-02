@@ -89,7 +89,7 @@ An entry in `config.models` accepts either the `peak` / `offPeak` shape above or
 
 A built-in table ages, so the Host half downloads `pricing.json` from this repository once a day:
 
-- URL: `https://raw.githubusercontent.com/TSE2006/dsh-spend-meter/main/pricing.json`; `SPEND_METER_PRICING_URL` points it at your own mirror.
+- URL: `https://cdn.jsdelivr.net/gh/TSE2006/dsh-spend-meter@main/pricing.json` first (some networks cannot resolve `raw.githubusercontent.com`), then `https://raw.githubusercontent.com/TSE2006/dsh-spend-meter/main/pricing.json`; `SPEND_METER_PRICING_URL` points it at your own mirror (only that one URL is then used).
 - Cache: `%USERPROFILE%\.dsh\spend-meter-pricing.json`, reused for 24 hours; a failed download keeps the previous table (or the built-in one) and only reports the reason in the popover.
 - Precedence: `config.models` > downloaded/cached table > built-in table, merged model by model, so publishing a single new model is enough.
 - Off switch: `config.autoPricing: false`.

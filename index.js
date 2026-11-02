@@ -39,8 +39,14 @@ const LEDGER_KEEP_DAYS = 70
  * repository, so a price change needs no release: the Host fetches it once a day,
  * caches it next to the profile, and keeps the built-in table when anything fails.
  */
-const PRICING_URL =
-  process.env.SPEND_METER_PRICING_URL || 'https://raw.githubusercontent.com/TSE2006/dsh-spend-meter/main/pricing.json'
+const PRICING_URLS = process.env.SPEND_METER_PRICING_URL
+  ? [process.env.SPEND_METER_PRICING_URL]
+  : [
+      // Some networks cannot resolve raw.githubusercontent.com; the CDN mirrors
+      // the same file, so try it first and fall back to the canonical URL.
+      'https://cdn.jsdelivr.net/gh/TSE2006/dsh-spend-meter@main/pricing.json',
+      'https://raw.githubusercontent.com/TSE2006/dsh-spend-meter/main/pricing.json',
+    ]
 const PRICING_FILE = profileFile('spend-meter-pricing.json')
 const PRICING_REFRESH_MS = 24 * 60 * 60 * 1000
 const PRICING_TIMEOUT_MS = 5000
@@ -802,6 +808,30 @@ export function apply(ctx, config) {
 
     //#region pricing
 
+    /**
+     * Try every mirror in turn: the first one that answers wins. The reason kept
+     * on failure is the last error, which is the most informative one.
+     */
+    const downloadPricing = async (fetchImpl) => {
+      let failure = 'no url'
+      for (const url of PRICING_URLS) {
+        try {
+          const timeout = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+            ? AbortSignal.timeout(PRICING_TIMEOUT_MS)
+            : undefined
+          const response = await fetchImpl(url, { signal: timeout, headers: { accept: 'application/json' } })
+          if (!response || response.ok !== true) throw new Error(`status=${(response && response.status) || 'none'}`)
+          const payload = await response.json()
+          if (!adoptPricing(payload, 'remote')) throw new Error('no usable model in the published table')
+          return { payload, error: null }
+        } catch (error) {
+          const cause = error && error.cause && (error.cause.code || error.cause.message)
+          failure = String(cause || (error && error.message) || error)
+        }
+      }
+      return { payload: undefined, error: failure }
+    }
+
     /** Adopt a published table; the row config still wins over it. */
     const adoptPricing = (payload, origin) => {
       const models = normaliseModelMap(payload && payload.models !== undefined ? payload.models : payload)
@@ -852,18 +882,12 @@ export function apply(ctx, config) {
         priceSource = { ...priceSource, error: 'no fetch' }
         return
       }
-      try {
-        const timeout = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
-          ? AbortSignal.timeout(PRICING_TIMEOUT_MS)
-          : undefined
-        const response = await fetchImpl(PRICING_URL, { signal: timeout, headers: { accept: 'application/json' } })
-        if (!response || response.ok !== true) throw new Error(`status=${(response && response.status) || 'none'}`)
-        const payload = await response.json()
-        if (!adoptPricing(payload, 'remote')) throw new Error('no usable model in the published table')
-        if (fs) writePricingCache(fs, payload)
-      } catch (error) {
-        priceSource = { ...priceSource, error: String((error && error.message) || error) }
+      const result = await downloadPricing(fetchImpl)
+      if (result.error !== null) {
+        priceSource = { ...priceSource, error: result.error }
+        return
       }
+      if (fs) writePricingCache(fs, result.payload)
     }
 
     //#endregion

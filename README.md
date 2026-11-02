@@ -89,7 +89,7 @@
 
 内置价目表会过期，所以 Host 半每天去本仓库拉一次 `pricing.json`（设置项见下）：
 
-- 地址：`https://raw.githubusercontent.com/TSE2006/dsh-spend-meter/main/pricing.json`，可用环境变量 `SPEND_METER_PRICING_URL` 指向自建镜像。
+- 地址：先试 `https://cdn.jsdelivr.net/gh/TSE2006/dsh-spend-meter@main/pricing.json`（部分网络解析不到 raw.githubusercontent.com），失败再试 `https://raw.githubusercontent.com/TSE2006/dsh-spend-meter/main/pricing.json`；可用环境变量 `SPEND_METER_PRICING_URL` 指向自建镜像（此时只用这一个地址）。
 - 缓存：`%USERPROFILE%\.dsh\spend-meter-pricing.json`，24 小时内不重复请求；拉取失败时继续用上一份缓存或内置表，只在弹层里提示失败原因。
 - 优先级：`config.models` > 在线/缓存表 > 内置表；合并是逐模型的，所以只补新模型也会生效。
 - 关掉：`config.autoPricing: false`，或把 `SPEND_METER_PRICING_URL` 指向不可达地址（不推荐）。
