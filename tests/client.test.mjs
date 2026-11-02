@@ -199,6 +199,11 @@ const boot = async () => {
 
   let loaded
   const storage = createStorage()
+  const copied = []
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: { clipboard: { writeText: async (text) => { copied.push(text) } } },
+  })
   globalThis.window = {
     __ModuleLoader__: { load: (definition) => { loaded = definition } },
     localStorage: storage,
@@ -212,7 +217,7 @@ const boot = async () => {
     return modules[specifier]
   })
   await plugin.apply(context)
-  return { plugin, context, react, storage }
+  return { plugin, context, react, storage, copied }
 }
 
 /** A minimal localStorage stand-in; the banner keys live in it. */
@@ -451,6 +456,33 @@ test('the search and compaction lines name what paid for them', async () => {
 
   assert.match(text, /联网搜索：web_search 1 · ¥0\.0050\s+web_fetch 1 · ¥0\.0050/)
   assert.match(text, /自动压缩摘要：deepseek-official\/deepseek-flash 1 · ¥0\.280/)
+})
+
+test('the ledger copies out as CSV and as Markdown', async () => {
+  const { context, react, copied } = await boot()
+  const translate = translateWith(context)
+  const view = projection()
+  const { component } = context.registrations[0]
+  react.beginRender()
+  component({ t: translate, useProjection: () => view }).children[0].props.onClick()
+  react.beginRender()
+
+  const open1 = component({ t: translate, useProjection: () => view }).children[1]
+  const buttons = findByType(open1, 'button')
+  const csvButton = buttons.find((node) => node.props.title === '复制 CSV')
+  const mdButton = buttons.find((node) => node.props.title === '复制 Markdown')
+  assert.ok(csvButton, 'the popover must offer a CSV copy')
+  assert.ok(mdButton, 'the popover must offer a Markdown copy')
+
+  csvButton.props.onClick()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.match(copied[0], /^section,item,value,unit\n/)
+  assert.match(copied[0], /cost,合计,0\.3296,CNY/)
+
+  mdButton.props.onClick()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.match(copied[1], /^### 本对话花费 ¥0\.330/)
+  assert.match(copied[1], /- 联网搜索: ¥0\.010/)
 })
 
 test('the panel charts the last two weeks and this week’s total', async () => {

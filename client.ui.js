@@ -71,6 +71,15 @@ window.__ModuleLoader__.load({
       'panel.search': 'Web search',
       'panel.hidden': 'Auto-compaction',
       'panel.breakdown': '{label}: {items}',
+      'panel.total': 'Total',
+      'panel.tokensTitle': 'Tokens',
+      'panel.models': 'By model',
+      'panel.turns': 'Per turn',
+      'panel.budgetLimit': 'limit',
+      'panel.copyMarkdown': 'Copy Markdown',
+      'panel.copyCsv': 'Copy CSV',
+      'panel.copied': 'Copied',
+      'panel.copyFailed': 'Copy failed',
       'panel.calls': '{count} calls',
       'panel.times': '{count} times',
       'panel.cacheSaved': 'Cache reads saved {amount}',
@@ -126,6 +135,15 @@ window.__ModuleLoader__.load({
       'panel.search': '联网搜索',
       'panel.hidden': '自动压缩摘要',
       'panel.breakdown': '{label}：{items}',
+      'panel.total': '合计',
+      'panel.tokensTitle': 'Token 用量',
+      'panel.models': '按模型',
+      'panel.turns': '逐轮成本',
+      'panel.budgetLimit': '上限',
+      'panel.copyMarkdown': '复制 Markdown',
+      'panel.copyCsv': '复制 CSV',
+      'panel.copied': '已复制',
+      'panel.copyFailed': '复制失败',
       'panel.calls': '{count} 次',
       'panel.times': '{count} 次',
       'panel.cacheSaved': '缓存命中已省下 {amount}',
@@ -231,6 +249,9 @@ window.__ModuleLoader__.load({
 .sm-turns span{display:flex;justify-content:space-between;gap:8px}
 .sm-turns b{color:var(--dsw-alias-label-secondary);font-weight:400}
 .sm-footer{display:flex;gap:16px;margin-top:12px;border-top:.5px solid var(--dsw-alias-border-l2);padding-top:10px}
+.sm-actions{display:flex;gap:14px;margin-top:10px}
+.sm-actions button{font:inherit;color:var(--dsw-alias-label-tertiary);background:0 0;border:none;padding:0;cursor:pointer}
+.sm-actions button:hover{color:var(--dsw-alias-brand-primary);text-decoration:underline}
 .sm-footer a{color:var(--dsw-alias-brand-primary);text-decoration:none;display:inline-flex;align-items:center;gap:2px}
 .sm-footer a:hover{text-decoration:underline}
 .sm-external{font-size:10px;line-height:1;opacity:.75}
@@ -362,6 +383,112 @@ window.__ModuleLoader__.load({
         return { key: monthKey, text: t('panel.noticeMonth', { amount: amount(budget.month) }) }
       }
       return null
+    }
+
+    //#endregion
+
+    //#region export
+
+    /** One row per number the popover shows, so CSV and Markdown never drift. */
+    function ledgerRows(t, view, wallet) {
+      const rows = []
+      const cost = view?.cost ?? {}
+      const totals = view?.totals ?? {}
+      const symbol = symbolOf(view?.currency)
+      const add = (section, item, value, unit) => rows.push({ section, item, value, unit })
+      if (totals.miss > 0) add('cost', t('panel.inputMiss'), cost.miss, 'CNY')
+      if (totals.hit > 0) add('cost', t('panel.inputHit'), cost.hit, 'CNY')
+      if (totals.out > 0) add('cost', t('panel.output'), cost.out, 'CNY')
+      if (view?.search?.calls > 0) add('cost', t('panel.search'), cost.search, 'CNY')
+      if (view?.hidden?.count > 0) add('cost', t('panel.hidden'), cost.hidden, 'CNY')
+      add('cost', t('panel.total'), cost.total, 'CNY')
+      if (view?.saved > 0) {
+        add('cost', t('panel.cacheSaved', { amount: `${symbol}${formatMoney(view.saved)}` }), view.saved, 'CNY')
+        add('cost', t('panel.cacheSavedAlt', { amount: `${symbol}${formatMoney(view.withoutCache)}` }), view.withoutCache, 'CNY')
+      }
+      if (totals.miss > 0) add('tokens', t('panel.inputMiss'), totals.miss, 'tokens')
+      if (totals.hit > 0) add('tokens', t('panel.inputHit'), totals.hit, 'tokens')
+      if (totals.out > 0) add('tokens', t('panel.output'), totals.out, 'tokens')
+      if (wallet && wallet.status === 'ready') {
+        add('balance', t('panel.balancePaid'), wallet.paid, 'CNY')
+        add('balance', t('panel.bonus'), wallet.bonus, 'CNY')
+      }
+      const budget = view?.budget
+      if (budget?.day) {
+        add('budget', t('panel.budgetToday'), budget.day.spent, 'CNY')
+        add('budget', `${t('panel.budgetToday')} · ${t('panel.budgetLimit')}`, budget.day.limit, 'CNY')
+      }
+      if (budget?.month) {
+        add('budget', t('panel.budgetMonth'), budget.month.spent, 'CNY')
+        add('budget', `${t('panel.budgetMonth')} · ${t('panel.budgetLimit')}`, budget.month.limit, 'CNY')
+      }
+      for (const entry of view?.models ?? []) {
+        add('models', entry.id, entry.cost, 'CNY')
+      }
+      for (const entry of view?.turns ?? []) {
+        add('turns', t('turn.label', { turn: entry.turn }), entry.cost, 'CNY')
+      }
+      return rows
+    }
+
+    const csvCell = (value) => {
+      const text = value === undefined || value === null ? '' : String(value)
+      return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+    }
+
+    function ledgerCsv(t, view, wallet) {
+      const lines = ['section,item,value,unit']
+      for (const row of ledgerRows(t, view, wallet)) {
+        lines.push([row.section, row.item, row.value, row.unit].map(csvCell).join(','))
+      }
+      return `${lines.join('\n')}\n`
+    }
+
+    function ledgerMarkdown(t, view, wallet) {
+      const symbol = symbolOf(view?.currency)
+      const rows = ledgerRows(t, view, wallet)
+      const titles = {
+        cost: t('panel.title'),
+        tokens: t('panel.tokensTitle'),
+        balance: t('panel.balanceTitle'),
+        budget: t('panel.budgetTitle'),
+        models: t('panel.models'),
+        turns: t('panel.turns'),
+      }
+      const lines = [`### ${t('panel.title')} ${symbol}${formatMoney(view?.cost?.total)}`, '']
+      let section
+      for (const row of rows) {
+        if (row.section !== section) {
+          section = row.section
+          lines.push('', `**${titles[section] ?? section}**`)
+        }
+        const value = row.unit === 'CNY' ? `${symbol}${formatMoney(row.value)}` : formatTokens(row.value)
+        lines.push(`- ${row.item}: ${value}`)
+      }
+      lines.push('')
+      return `${lines.join('\n')}`
+    }
+
+    /** Clipboard first; a temporary textarea covers Electron builds without it. */
+    async function copyToClipboard(text) {
+      const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard
+      if (clipboard && typeof clipboard.writeText === 'function') {
+        await clipboard.writeText(text)
+        return
+      }
+      if (typeof document === 'undefined' || typeof document.createElement !== 'function') {
+        throw new Error('no clipboard available')
+      }
+      const area = document.createElement('textarea')
+      area.value = text
+      area.setAttribute('readonly', '')
+      area.style.position = 'fixed'
+      area.style.opacity = '0'
+      document.body.appendChild(area)
+      area.select()
+      const copied = typeof document.execCommand === 'function' && document.execCommand('copy')
+      document.body.removeChild(area)
+      if (!copied) throw new Error('copy command refused')
     }
 
     //#endregion
@@ -623,7 +750,7 @@ window.__ModuleLoader__.load({
     }
 
     /** Pure panel body: no hooks of its own, called from a guarded render. */
-    function buildPanel({ t, view, wallet, now, open, turnsExpanded, onToggleTurns }) {
+    function buildPanel({ t, view, wallet, now, open, turnsExpanded, onToggleTurns, copyState, onCopy }) {
       const pricing = (view && view.pricing) || FALLBACK_PRICING
       const currency = (view && view.currency) || 'CNY'
       const symbol = symbolOf(currency)
@@ -1032,6 +1159,37 @@ window.__ModuleLoader__.load({
 
             h(
               'div',
+              { className: 'sm-actions' },
+              h(
+                'button',
+                {
+                  type: 'button',
+                  title: t('panel.copyMarkdown'),
+                  onClick: () => {
+                    if (typeof onCopy === 'function') onCopy('markdown')
+                  },
+                },
+                copyState !== undefined && copyState !== null && copyState.kind === 'markdown'
+                  ? (copyState.ok ? t('panel.copied') : t('panel.copyFailed'))
+                  : t('panel.copyMarkdown'),
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  title: t('panel.copyCsv'),
+                  onClick: () => {
+                    if (typeof onCopy === 'function') onCopy('csv')
+                  },
+                },
+                copyState !== undefined && copyState !== null && copyState.kind === 'csv'
+                  ? (copyState.ok ? t('panel.copied') : t('panel.copyFailed'))
+                  : t('panel.copyCsv'),
+              ),
+            ),
+
+            h(
+              'div',
               { className: 'sm-footer' },
               h(
                 'a',
@@ -1115,6 +1273,7 @@ window.__ModuleLoader__.load({
       const [turnsExpanded, setTurnsExpanded] = React.useState(false)
       // Bumped after a dismissal so the banner is recomputed from storage.
       const [, setNoticeRevision] = React.useState(0)
+      const [copyState, setCopyState] = React.useState(null)
       const [now, setNow] = React.useState(() => Date.now())
       const rootRef = React.useRef(null)
 
@@ -1152,6 +1311,28 @@ window.__ModuleLoader__.load({
           open,
           turnsExpanded,
           onToggleTurns: () => setTurnsExpanded((previous) => !previous),
+          copyState,
+          onCopy: (kind) => {
+            let text
+            try {
+              text = kind === 'csv' ? ledgerCsv(t, view, wallet) : ledgerMarkdown(t, view, wallet)
+            } catch (error) {
+              note('export', error)
+              setCopyState({ kind, ok: false })
+              return
+            }
+            const settle = (ok) => {
+              setCopyState({ kind, ok })
+              if (typeof setTimeout === 'function') setTimeout(() => setCopyState(null), 1800)
+            }
+            copyToClipboard(text).then(
+              () => settle(true),
+              (error) => {
+                note('copy', error)
+                settle(false)
+              },
+            )
+          },
         })
       } catch (error) {
         note('render', error)
