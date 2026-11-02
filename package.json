@@ -36,6 +36,7 @@
     "client.js",
     "client.ui.js",
     "cordis.patch.yml",
+    "pricing.json",
     "locale/*.json",
     "icon.svg",
     "README.md",

@@ -96,6 +96,11 @@ window.__ModuleLoader__.load({
       'panel.budgetOverDay': 'Today’s budget is used up',
       'panel.budgetOverMonth': 'This month’s budget is used up',
       'panel.budgetSince': 'Counting since {date}',
+      'panel.noticeDay': 'Today’s budget is used up ({amount})',
+      'panel.noticeMonth': 'This month’s budget is used up ({amount})',
+      'panel.noticeDismiss': 'Dismiss',
+      'panel.pricingRemote': 'Prices: updated {date}',
+      'panel.pricingError': 'Price update failed: {reason}',
       'time.hours': '{hours}h {minutes}m',
       'time.minutes': '{minutes}m',
       'turn.label': 'T{turn}',
@@ -141,6 +146,11 @@ window.__ModuleLoader__.load({
       'panel.budgetOverDay': '今日预算已用完',
       'panel.budgetOverMonth': '本月预算已用完',
       'panel.budgetSince': '自 {date} 起统计',
+      'panel.noticeDay': '今日预算已用完（{amount}）',
+      'panel.noticeMonth': '本月预算已用完（{amount}）',
+      'panel.noticeDismiss': '关闭',
+      'panel.pricingRemote': '价目表：{date} 更新',
+      'panel.pricingError': '价目表更新失败：{reason}',
       'time.hours': '{hours}小时{minutes}分',
       'time.minutes': '{minutes}分',
       'turn.label': 'T{turn}',
@@ -194,6 +204,10 @@ window.__ModuleLoader__.load({
 .sm-rule{border-top:.5px solid var(--dsw-alias-border-l2);margin-bottom:10px}
 .sm-note{color:var(--dsw-alias-label-tertiary);margin:-2px 0 10px}
 .sm-note-tight{color:var(--dsw-alias-label-tertiary);margin:6px 0 0}
+.sm-notice{display:inline-flex;align-items:center;gap:4px;max-width:100%;margin-left:8px;padding:0 2px 0 8px;border-radius:var(--dsw-radius-sm);border:.5px solid var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary);font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);line-height:18px;white-space:nowrap}
+.sm-notice-text{overflow:hidden;text-overflow:ellipsis}
+.sm-notice-close{font:inherit;color:inherit;background:0 0;border:none;padding:0 2px;cursor:pointer;opacity:.7;line-height:1}
+.sm-notice-close:hover{opacity:1}
 .sm-rows{color:var(--dsw-alias-label-tertiary);grid-template-columns:minmax(76px,auto) minmax(0,1fr) auto;gap:6px 16px;margin:0;display:grid}
 .sm-rows dt,.sm-rows dd{min-width:0;margin:0}
 .sm-rows dt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -286,6 +300,58 @@ window.__ModuleLoader__.load({
     }
 
     const symbolOf = (currency) => (currency === 'CNY' ? '¥' : '$')
+
+    //#endregion
+
+    //#region notices
+
+    const NOTICE_KEY = 'spend-meter:notices'
+
+    /** Dismissed banners, keyed by period (`day:2026-11-02`, `month:2026-11`). */
+    function readNotices() {
+      try {
+        const raw = window.localStorage.getItem(NOTICE_KEY)
+        const parsed = raw === null ? null : JSON.parse(raw)
+        return parsed && typeof parsed === 'object' ? parsed : {}
+      } catch (error) {
+        note('notices', error)
+        return {}
+      }
+    }
+
+    function markNotice(key) {
+      try {
+        const notices = readNotices()
+        notices[key] = Date.now()
+        // Keep the file from growing forever: 90 days of keys is plenty.
+        const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000
+        for (const [entry, at] of Object.entries(notices)) {
+          if (!Number.isFinite(at) || at < cutoff) delete notices[entry]
+        }
+        window.localStorage.setItem(NOTICE_KEY, JSON.stringify(notices))
+      } catch (error) {
+        note('notices', error)
+      }
+    }
+
+    /** An exhausted budget deserves one banner per period, not one per render. */
+    function budgetNotice(budget, t) {
+      if (!budget || typeof budget.today !== 'string') return null
+      const symbol = symbolOf(budget.currency)
+      const dismissed = readNotices()
+      const amount = (entry) => `${symbol}${formatMoney(entry.spent)} / ${symbol}${formatMoney(entry.limit)}`
+      const dayKey = `day:${budget.today}`
+      if (budget.day && budget.day.ratio >= 1 && !dismissed[dayKey]) {
+        return { key: dayKey, text: t('panel.noticeDay', { amount: amount(budget.day) }) }
+      }
+      const monthKey = `month:${budget.today.slice(0, 7)}`
+      if (budget.month && budget.month.ratio >= 1 && !dismissed[monthKey]) {
+        return { key: monthKey, text: t('panel.noticeMonth', { amount: amount(budget.month) }) }
+      }
+      return null
+    }
+
+    //#endregion
 
     function beijingMoment(ms) {
       const shifted = new Date(ms + BEIJING_OFFSET_MS)
@@ -619,6 +685,19 @@ window.__ModuleLoader__.load({
         && sinceDate !== `${budget.today.slice(0, 7)}-01`
       const budgetNote = startedMidMonth ? t('panel.budgetSince', { date: sinceDate }) : undefined
 
+      // Which tariff priced these numbers. The built-in table is the documented
+      // default, so only a downloaded table or a failed download is worth a line.
+      const priceInfo = view && view.pricing ? view.pricing : undefined
+      const pricingNote = priceInfo === undefined
+        ? undefined
+        : typeof priceInfo.error === 'string' && priceInfo.error
+          ? t('panel.pricingError', { reason: priceInfo.error.slice(0, 60) })
+          : priceInfo.source === 'remote' || priceInfo.source === 'cache'
+            ? t('panel.pricingRemote', {
+                date: typeof priceInfo.updatedAt === 'string' ? priceInfo.updatedAt.slice(0, 10) : '—',
+              })
+            : undefined
+
       let runsLeft
       if (balanceInfo.status === 'ready' && turns.length > 0) {
         const average = turns.reduce((sum, entry) => sum + entry.cost, 0) / turns.length
@@ -821,6 +900,8 @@ window.__ModuleLoader__.load({
                 )
               : null,
 
+            pricingNote === undefined ? null : h('div', { className: 'sm-note-tight' }, pricingNote),
+
             h(
               'div',
               { className: 'sm-footer' },
@@ -904,6 +985,8 @@ window.__ModuleLoader__.load({
 
       const [open, setOpen] = React.useState(false)
       const [turnsExpanded, setTurnsExpanded] = React.useState(false)
+      // Bumped after a dismissal so the banner is recomputed from storage.
+      const [, setNoticeRevision] = React.useState(0)
       const [now, setNow] = React.useState(() => Date.now())
       const rootRef = React.useRef(null)
 
@@ -951,6 +1034,16 @@ window.__ModuleLoader__.load({
       const balanceClass = model.balanceTone === undefined ? undefined : `sm-tone-${model.balanceTone}`
       const costClass = model.costTone === undefined ? 'sm-pill-label' : `sm-pill-label sm-tone-${model.costTone}`
       const pillTitle = `${t('pill.title')}${model.budgetTitle === undefined ? '' : model.budgetTitle}`
+      const notice = view === undefined || view === null
+        ? null
+        : (() => {
+            try {
+              return budgetNotice(view.budget, t)
+            } catch (error) {
+              note('notice', error)
+              return null
+            }
+          })()
       const icon = h(
         'span',
         { className: iconClass === undefined ? 'sm-icon' : `sm-icon ${iconClass}` },
@@ -984,6 +1077,27 @@ window.__ModuleLoader__.load({
           ),
         ),
         model.panel === null ? null : h(PanelBoundary, null, model.panel),
+        notice === null
+          ? null
+          : h(
+              'span',
+              { className: 'sm-notice', role: 'status' },
+              h('span', { className: 'sm-notice-text' }, notice.text),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'sm-notice-close',
+                  'aria-label': t('panel.noticeDismiss'),
+                  title: t('panel.noticeDismiss'),
+                  onClick: () => {
+                    markNotice(notice.key)
+                    setNoticeRevision((previous) => previous + 1)
+                  },
+                },
+                '×',
+              ),
+            ),
       )
       }
 

@@ -1,0 +1,23 @@
+{
+  "updatedAt": "2026-11-02",
+  "currency": "CNY",
+  "note": "CNY per million tokens. Off-peak is half of peak. Bump updatedAt whenever a price changes; the plugin fetches this file once a day and falls back to the built-in table when it cannot.",
+  "models": {
+    "deepseek-flash": {
+      "peak": { "cacheHit": 0.04, "cacheMiss": 2, "output": 8 },
+      "offPeak": { "cacheHit": 0.02, "cacheMiss": 1, "output": 4 }
+    },
+    "deepseek-v4-flash": {
+      "peak": { "cacheHit": 0.04, "cacheMiss": 2, "output": 8 },
+      "offPeak": { "cacheHit": 0.02, "cacheMiss": 1, "output": 4 }
+    },
+    "deepseek-v4-flash-vision-exp": {
+      "peak": { "cacheHit": 0.04, "cacheMiss": 2, "output": 8 },
+      "offPeak": { "cacheHit": 0.02, "cacheMiss": 1, "output": 4 }
+    },
+    "deepseek-v4-pro": {
+      "peak": { "cacheHit": 0.3, "cacheMiss": 9, "output": 27 },
+      "offPeak": { "cacheHit": 0.15, "cacheMiss": 4.5, "output": 13.5 }
+    }
+  }
+}

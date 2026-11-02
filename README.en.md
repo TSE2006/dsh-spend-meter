@@ -32,6 +32,8 @@ The package name is fixed to `@local/spend-meter` (the local-package convention)
 | Ledger · cache | Money saved by cache hits, and what the same tokens would have cost without a cache |
 | Ledger · balance | Top-up balance + bonus balance, and roughly how many more turns it can pay for at the current pace |
 | Ledger · budget | Today / this month spent vs. limit (only with `budget` configured), yellow at 80%, red with a notice once exceeded; the figure above the composer turns the same colour, and its tooltip carries today's percentage |
+| Budget banner | Once a budget is used up a banner appears next to the pill; close it with × and the same day (or month) stays quiet |
+| Ledger · prices | "Prices: updated <date>" when the table came from the daily download; a failed download says why; the built-in table takes no line of its own |
 | Ledger · models | Cost split per model (shown only when a session used more than one) |
 | Ledger · turns | The cost of each of the last 8 turns, expandable to the whole conversation |
 | Ledger · links | Jump to the DeepSeek platform's usage / top-up pages |
@@ -83,6 +85,16 @@ An entry in `config.models` accepts either the `peak` / `offPeak` shape above or
       deepseek-v4.1-flash-1017: { cacheHit: 0.02, cacheMiss: 1, output: 4 }   # flat, same peak and off-peak
 ```
 
+### Daily price updates
+
+A built-in table ages, so the Host half downloads `pricing.json` from this repository once a day:
+
+- URL: `https://raw.githubusercontent.com/TSE2006/dsh-spend-meter/main/pricing.json`; `SPEND_METER_PRICING_URL` points it at your own mirror.
+- Cache: `%USERPROFILE%\.dsh\spend-meter-pricing.json`, reused for 24 hours; a failed download keeps the previous table (or the built-in one) and only reports the reason in the popover.
+- Precedence: `config.models` > downloaded/cached table > built-in table, merged model by model, so publishing a single new model is enough.
+- Off switch: `config.autoPricing: false`.
+- Maintenance: when DeepSeek ships a model, edit `pricing.json` at the repository root — users do not need a plugin upgrade.
+
 ## What the numbers count
 
 Every line comes from the usage events DSH already records; no request goes to the platform's billing API.
@@ -113,6 +125,7 @@ Add a `config` block to the `spend-meter` row in the profile's `cordis.patch.yml
       daily: 20            # today's limit, same unit as currency; omit or 0 for no limit
       monthly: 200         # this month's limit
       warnRatio: 0.8       # turns yellow at this share, red with a notice past 100%
+    autoPricing: true    # false keeps the built-in table and never downloads
     models:
       deepseek-flash:
         peak: { cacheHit: 0.04, cacheMiss: 2, output: 8 }
@@ -130,6 +143,7 @@ Add a `config` block to the `spend-meter` row in the profile's `cordis.patch.yml
 | `client.js` | Deployment artifact, identical to `client.ui.js` |
 | `locale/{en,zh}.json` | Title and description shown in the plugin manager |
 | `icon.svg` | Plugin icon |
+| `pricing.json` | The online price table, merged into the built-in one once a day |
 | `cordis.patch.yml` | Bundle insert declaration |
 | `README.md` / `README.en.md` | Chinese / English documentation |
 | `docs/preview.png` | Screenshot of the pill |
@@ -150,7 +164,7 @@ Node's built-in `node:test` and `node:assert` only — there are no development 
 
 ## Known limits
 
-- **The price table is built in** (DeepSeek's official prices as fetched in 2026-10). After an official price change, edit `DEFAULT_PRICING` in `index.js` or override it through the profile patch's `config`; models outside the table only count tokens, never money, and are flagged at the bottom of the popover.
+- **The price table is built in and topped up online**: the built-in table holds DeepSeek's official prices as fetched in 2026-10, and the Host half downloads `pricing.json` from this repository once a day to override the same models (a cached or built-in table is used offline). For a private tariff, write `config.models` in the profile patch — it wins over both. Models outside every table only count tokens, never money, and are flagged at the bottom of the popover.
 - **Search billing** starts at 2026-11-01 00:00 Beijing time, per the official announcement; earlier `web_search` / `web_fetch` calls are counted as free.
 - **The balance needs a platform account**: when DSH uses an API key and is not signed in to a DeepSeek platform account, the wallet cannot be read — the balance slot shows `—`, the popover explains why, and cost tracking is unaffected.
 - **This conversation only**: for a cross-session total, use the platform usage page (linked at the bottom of the popover).

@@ -3,7 +3,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { apply } from '../index.js'
+import { apply, normaliseModelMap, resolvePricing } from '../index.js'
 
 const OFF_PEAK = Date.parse('2026-10-31T20:00:00+08:00') // Saturday
 const PEAK = Date.parse('2026-11-03T10:00:00+08:00') // Tuesday 10:00
@@ -18,7 +18,9 @@ const install = (config) => {
       effect: (fn) => fn(),
       get: () => undefined,
     },
-    config,
+    // Tests never touch the network: the published table stays off unless a
+    // test opts in by inspecting the resolver directly.
+    { autoPricing: false, ...config },
   )
   assert.ok(definition, 'the projection must register synchronously')
   return definition
@@ -143,4 +145,39 @@ test('no budget config means no budget field', () => {
   const definition = install({})
   const { view } = viewOf(definition, [])
   assert.equal(view.budget, null)
+})
+
+test('the view reports which tariff priced it', () => {
+  const definition = install({})
+  const { view } = viewOf(definition, [])
+  assert.equal(view.pricing.source, 'builtin')
+  assert.equal(view.pricing.error, null)
+})
+
+test('a published table fills in models the built-in table does not know', () => {
+  const published = normaliseModelMap({
+    'vendor-y': { cacheHit: 0.01, cacheMiss: 1, output: 2 },
+    junk: 'nope',
+  })
+  const pricing = resolvePricing({}, published)
+  // a flat entry is written to both tariff windows
+  assert.deepEqual(pricing.models['vendor-y'].offPeak, { cacheHit: 0.01, cacheMiss: 1, output: 2 })
+  assert.deepEqual(pricing.models['vendor-y'].peak, { cacheHit: 0.01, cacheMiss: 1, output: 2 })
+  // built-in entries survive the merge, unparseable ones are dropped
+  assert.equal(pricing.models['deepseek-flash'].peak.cacheMiss, 2)
+  assert.equal(pricing.models.junk, undefined)
+})
+
+test('configured prices win over both the built-in and the published table', () => {
+  const published = normaliseModelMap({ 'vendor-x': { cacheHit: 0.1, cacheMiss: 5, output: 10 } })
+  const pricing = resolvePricing(
+    { models: { 'vendor-x': { cacheHit: 0.2, cacheMiss: 20, output: 40 } } },
+    published,
+  )
+  assert.deepEqual(pricing.models['vendor-x'].peak, { cacheHit: 0.2, cacheMiss: 20, output: 40 })
+})
+
+test('auto pricing can be switched off', () => {
+  assert.equal(resolvePricing({}).autoPricing, true)
+  assert.equal(resolvePricing({ autoPricing: false }).autoPricing, false)
 })

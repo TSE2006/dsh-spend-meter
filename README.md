@@ -32,6 +32,8 @@
 | 账本 · 缓存 | 缓存命中省下的钱，以及「如果没有缓存本来要花多少」 |
 | 账本 · 余额 | 充值余额 + 赠送余额，以及「按当前速度还能聊约 N 轮」 |
 | 账本 · 预算 | 今日 / 本月已花与上限（配置了 `budget` 才显示），达到 80% 变黄、超支变红并给出提示；届时输入框上方的金额也会跟着变色，悬停可看到今日百分比 |
+| 超支提示条 | 预算用完后在药丸右侧出现一条，点 × 关闭；同一天（或同一月）只提示一次，关闭后不再出现 |
+| 账本 · 价目 | 价目表来自在线更新时注明「价目表：<日期> 更新」，更新失败时注明原因；内置价目表不额外占位 |
 | 账本 · 模型 | 按模型拆分的金额（多模型会话才显示） |
 | 账本 · 逐轮 | 最近 8 轮各自的成本，点「展开更早 N 轮」可看到全部 |
 | 账本 · 链接 | 跳转 DeepSeek 平台「查看用量 / 去充值」 |
@@ -83,6 +85,16 @@
       deepseek-v4.1-flash-1017: { cacheHit: 0.02, cacheMiss: 1, output: 4 }   # 平价，峰谷同价
 ```
 
+### 价目在线更新
+
+内置价目表会过期，所以 Host 半每天去本仓库拉一次 `pricing.json`（设置项见下）：
+
+- 地址：`https://raw.githubusercontent.com/TSE2006/dsh-spend-meter/main/pricing.json`，可用环境变量 `SPEND_METER_PRICING_URL` 指向自建镜像。
+- 缓存：`%USERPROFILE%\.dsh\spend-meter-pricing.json`，24 小时内不重复请求；拉取失败时继续用上一份缓存或内置表，只在弹层里提示失败原因。
+- 优先级：`config.models` > 在线/缓存表 > 内置表；合并是逐模型的，所以只补新模型也会生效。
+- 关掉：`config.autoPricing: false`，或把 `SPEND_METER_PRICING_URL` 指向不可达地址（不推荐）。
+- 维护：新模型上线后改仓库根的 `pricing.json` 即可，用户无需升级插件。
+
 ## 计费口径
 
 分子分项全部来自 DSH 记录的 usage 事件，不额外请求平台账单：
@@ -113,6 +125,7 @@
       daily: 20            # 今日上限，单位同 currency；不配或填 0 表示不限
       monthly: 200         # 本月上限
       warnRatio: 0.8       # 到这个比例变黄，超过 100% 变红并提示
+    autoPricing: true      # 设为 false 则只用内置价目表，不联网更新
     models:
       deepseek-flash:
         peak: { cacheHit: 0.04, cacheMiss: 2, output: 8 }
@@ -130,6 +143,7 @@
 | `client.js` | 部署产物，内容与 `client.ui.js` 相同 |
 | `locale/{en,zh}.json` | 插件管理器里显示的标题与说明 |
 | `icon.svg` | 插件图标 |
+| `pricing.json` | 在线价目表，Host 半每天拉取一次合并到内置表 |
 | `cordis.patch.yml` | bundle 插入声明 |
 | `README.md` / `README.en.md` | 中文 / 英文文档 |
 | `docs/preview.png` | 药丸截图 |
@@ -150,7 +164,7 @@ npm test      # = node --test "tests/*.test.mjs"
 
 ## 已知限制
 
-- **价格表是内置的**（2026-10 抓取的 DeepSeek 官方价）。官方调价后需要改 `index.js` 里的 `DEFAULT_PRICING`，或在 profile patch 的 `config` 里覆盖；不在表内的模型只统计 token，不计金额，并在弹层底部提示。
+- **价格表以内置值为底、在线更新为补**：内置表是 2026-10 抓取的 DeepSeek 官方价，Host 半每天拉一次仓库根的 `pricing.json` 覆盖同名模型（关网时用缓存或内置值）。要用私有价目就在 profile patch 的 `config.models` 里写，它优先级最高。不在任何表内的模型只统计 token，不计金额，并在弹层底部提示。
 - **搜索计费**按官方公告从北京时间 2026-11-01 00:00 起算，之前的 `web_search` / `web_fetch` 记为免费。
 - **余额依赖平台账户**：DSH 用 API Key 且未登录 DeepSeek 平台账号时读不到钱包，此时余额位显示 `—`，弹层里给出原因，花费统计不受影响。
 - **只统计本会话**：跨会话累计请用平台用量页（弹层底部有入口）。

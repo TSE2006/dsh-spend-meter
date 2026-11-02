@@ -20,18 +20,30 @@ const DIAG_PATH = 'C:/Users/30617/Desktop/Deepseek_QQ/.tmp/spend-meter-host.json
  * projection only ever sees one conversation, so the totals are accumulated here
  * and persisted next to the profile: a restart must not reset "spent today".
  */
-const LEDGER_FILE = (() => {
-  const explicit = process.env.SPEND_METER_LEDGER
-  if (explicit) return explicit
-  const base = process.env.DSH_PROFILE_DIR
-  if (base) return `${base.replace(/[\\/]+$/, '')}/spend-meter-ledger.json`
+/** Files shared by every half of the plugin live next to the profile. */
+const profileFile = (name) => {
+  const profile = process.env.DSH_PROFILE_DIR
+  if (profile) return `${profile.replace(/[\\/]+$/, '')}/${name}`
   // The desktop Host starts without DSH_PROFILE_DIR, so fall back to the user home.
   const home = process.env.USERPROFILE || process.env.HOME
-  return home ? `${home.replace(/[\\/]+$/, '').replace(/\\/g, '/')}/.dsh/spend-meter-ledger.json` : null
-})()
+  return home ? `${home.replace(/[\\/]+$/, '').replace(/\\/g, '/')}/.dsh/${name}` : null
+}
+
+const LEDGER_FILE = process.env.SPEND_METER_LEDGER || profileFile('spend-meter-ledger.json')
 
 /** Days kept in the ledger; older buckets are dropped on every write. */
 const LEDGER_KEEP_DAYS = 70
+
+/**
+ * The published tariff. It is a plain JSON file maintained in the plugin's own
+ * repository, so a price change needs no release: the Host fetches it once a day,
+ * caches it next to the profile, and keeps the built-in table when anything fails.
+ */
+const PRICING_URL =
+  process.env.SPEND_METER_PRICING_URL || 'https://raw.githubusercontent.com/TSE2006/dsh-spend-meter/main/pricing.json'
+const PRICING_FILE = profileFile('spend-meter-pricing.json')
+const PRICING_REFRESH_MS = 24 * 60 * 60 * 1000
+const PRICING_TIMEOUT_MS = 5000
 
 /** Both schemas are validated with `.parse()` only, so an identity schema suffices. */
 const PASS_THROUGH = { parse: (value) => value }
@@ -409,7 +421,7 @@ function applyToolCall(state, event, pricing) {
 
 //#region view
 
-function summarise(state, pricing, wallet, budget) {
+function summarise(state, pricing, wallet, budget, priceInfo) {
   const models = []
   for (const [modelKey, entry] of Object.entries(state.models)) {
     const total = entry.cost.miss + entry.cost.hit + entry.cost.out
@@ -465,6 +477,11 @@ function summarise(state, pricing, wallet, budget) {
       holidays: [...pricing.holidaySet],
       searchPerCall: pricing.searchPerCall,
       currency: pricing.currency,
+      /** Which tariff is in force, so a stale table is never invisible. */
+      source: priceInfo?.source ?? 'builtin',
+      updatedAt: priceInfo?.updatedAt ?? null,
+      fetchedAt: priceInfo?.fetchedAt ?? null,
+      error: priceInfo?.error ?? null,
     },
   }
 }
@@ -487,20 +504,38 @@ function normaliseFlatPrice(table) {
   return { peak: price, offPeak: price }
 }
 
-/** Merge the row config over the built-in tariff. */
-function resolvePricing(config) {
-  const source = config && typeof config === 'object' ? config : {}
-  const models = { ...DEFAULT_PRICING.models }
-  if (source.models && typeof source.models === 'object') {
-    for (const [model, table] of Object.entries(source.models)) {
-      const flat = normaliseFlatPrice(table)
-      if (flat) {
-        models[model] = flat
-        continue
-      }
-      if (table && typeof table === 'object' && table.peak && table.offPeak) models[model] = table
+/**
+ * Turn a published table into model entries, dropping anything that is not a
+ * usable price. Accepts both the peak/off-peak shape and the flat tariff.
+ */
+export function normaliseModelMap(source) {
+  if (!source || typeof source !== 'object') return undefined
+  const models = {}
+  for (const [model, table] of Object.entries(source)) {
+    if (typeof model !== 'string' || !model) continue
+    const flat = normaliseFlatPrice(table)
+    if (flat) {
+      models[model] = flat
+      continue
+    }
+    if (table && typeof table === 'object' && table.peak && table.offPeak) {
+      const peak = normaliseFlatPrice(table.peak)
+      const offPeak = normaliseFlatPrice(table.offPeak)
+      if (peak && offPeak) models[model] = { peak: peak.peak, offPeak: offPeak.offPeak }
     }
   }
+  return Object.keys(models).length > 0 ? models : undefined
+}
+
+/**
+ * Merge the row config over the published table over the built-in tariff.
+ * `published` comes from the remote feed and is optional: without it this is the
+ * plain "config over defaults" resolution.
+ */
+export function resolvePricing(config, published) {
+  const source = config && typeof config === 'object' ? config : {}
+  const models = { ...DEFAULT_PRICING.models, ...(published ?? {}) }
+  for (const [model, table] of Object.entries(normaliseModelMap(source.models) ?? {})) models[model] = table
   const windows = Array.isArray(source.windows) && source.windows.length > 0 ? source.windows : DEFAULT_PRICING.windows
   const holidays = Array.isArray(source.holidays) ? source.holidays : DEFAULT_PRICING.holidays
   const budget = source.budget && typeof source.budget === 'object' ? source.budget : {}
@@ -514,6 +549,8 @@ function resolvePricing(config) {
     searchPerCall: Number.isFinite(source.searchPerCall) ? source.searchPerCall : DEFAULT_PRICING.searchPerCall,
     searchFreeUntil: Number.isFinite(source.searchFreeUntil) ? source.searchFreeUntil : DEFAULT_PRICING.searchFreeUntil,
     turnHistory: Number.isFinite(source.turnHistory) ? source.turnHistory : DEFAULT_PRICING.turnHistory,
+    /** Opt out of the daily refresh with `autoPricing: false`. */
+    autoPricing: source.autoPricing !== false,
     limits: {
       daily: limit(budget.daily),
       monthly: limit(budget.monthly),
@@ -555,7 +592,11 @@ export function apply(ctx, config) {
   // A Host half that throws during apply fails its Cordis entry; keep the failure
   // local so a pricing or projection defect costs the meter, never the app.
   try {
-    const pricing = resolvePricing(config)
+    const pricingConfig = config && typeof config === 'object' ? config : {}
+    let published = undefined
+    let pricing = resolvePricing(pricingConfig)
+    /** Where the current tariff came from, so the popover can be honest about it. */
+    let priceSource = { source: 'builtin', updatedAt: null, fetchedAt: null, error: null }
 
     // The wallet is Host state: the Client reads it through the projection view
     // instead of making a Remote call of its own.
@@ -759,6 +800,74 @@ export function apply(ctx, config) {
 
     //#endregion
 
+    //#region pricing
+
+    /** Adopt a published table; the row config still wins over it. */
+    const adoptPricing = (payload, origin) => {
+      const models = normaliseModelMap(payload && payload.models !== undefined ? payload.models : payload)
+      if (!models) return false
+      published = models
+      pricing = resolvePricing(pricingConfig, published)
+      priceSource = {
+        source: origin,
+        updatedAt: payload && typeof payload.updatedAt === 'string' ? payload.updatedAt : null,
+        fetchedAt: new Date().toISOString(),
+        error: null,
+      }
+      return true
+    }
+
+    const readPricingCache = (fs) => {
+      if (!PRICING_FILE) return false
+      try {
+        const cached = JSON.parse(fs.readFileSync(PRICING_FILE, 'utf8'))
+        const age = Date.now() - Date.parse(cached && cached.fetchedAt)
+        if (!cached || !Number.isFinite(age) || age > PRICING_REFRESH_MS) return false
+        return adoptPricing(cached.payload, 'cache')
+      } catch {
+        return false
+      }
+    }
+
+    const writePricingCache = (fs, payload) => {
+      if (!PRICING_FILE) return
+      try {
+        fs.mkdirSync(PRICING_FILE.slice(0, PRICING_FILE.lastIndexOf('/')), { recursive: true })
+        fs.writeFileSync(PRICING_FILE, JSON.stringify({ fetchedAt: new Date().toISOString(), payload }))
+      } catch {
+        // a read-only profile must not break the meter
+      }
+    }
+
+    /**
+     * One read a day: cache first, network second, built-in table if either fails.
+     * New prices apply from the next event on, which is when the view recomputes.
+     */
+    const refreshPricing = async () => {
+      if (!pricing.autoPricing) return
+      const fs = await loadFs()
+      if (fs && readPricingCache(fs)) return
+      const fetchImpl = globalThis.fetch
+      if (typeof fetchImpl !== 'function') {
+        priceSource = { ...priceSource, error: 'no fetch' }
+        return
+      }
+      try {
+        const timeout = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+          ? AbortSignal.timeout(PRICING_TIMEOUT_MS)
+          : undefined
+        const response = await fetchImpl(PRICING_URL, { signal: timeout, headers: { accept: 'application/json' } })
+        if (!response || response.ok !== true) throw new Error(`status=${(response && response.status) || 'none'}`)
+        const payload = await response.json()
+        if (!adoptPricing(payload, 'remote')) throw new Error('no usable model in the published table')
+        if (fs) writePricingCache(fs, payload)
+      } catch (error) {
+        priceSource = { ...priceSource, error: String((error && error.message) || error) }
+      }
+    }
+
+    //#endregion
+
     const definition = {
       key: 'spendMeter',
       version: 1,
@@ -786,12 +895,13 @@ export function apply(ctx, config) {
           diag.limits = pricing.limits
           diag.liveKeys = live.size
           diag.budget = budgetView(state)
+          diag.pricing = priceSource
           const now = Date.now()
           if (diag.writtenAt === undefined || now - diag.writtenAt > 800) {
             diag.writtenAt = now
             reportDiag(diag)
           }
-          return summarise(state, pricing, wallet, budgetView(state))
+          return summarise(state, pricing, wallet, budgetView(state), priceSource)
         },
       },
     }
@@ -852,6 +962,21 @@ export function apply(ctx, config) {
       }, 'spend-meter: wallet polling')
     } catch (error) {
       diag.walletPolling = String((error && error.message) || error)
+      reportDiag(diag)
+    }
+
+    // Refresh the published tariff once a day; a failure only costs freshness.
+    try {
+      ctx.effect(() => {
+        refreshPricing().catch(() => {})
+        const handle = setInterval(() => {
+          refreshPricing().catch(() => {})
+        }, PRICING_REFRESH_MS)
+        if (handle && typeof handle.unref === 'function') handle.unref()
+        return () => clearInterval(handle)
+      }, 'spend-meter: pricing')
+    } catch (error) {
+      diag.pricing = { source: 'builtin', error: String((error && error.message) || error) }
       reportDiag(diag)
     }
   } catch (error) {

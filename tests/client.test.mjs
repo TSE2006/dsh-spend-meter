@@ -186,7 +186,11 @@ const boot = async () => {
   }
 
   let loaded
-  globalThis.window = { __ModuleLoader__: { load: (definition) => { loaded = definition } } }
+  const storage = createStorage()
+  globalThis.window = {
+    __ModuleLoader__: { load: (definition) => { loaded = definition } },
+    localStorage: storage,
+  }
   globalThis.document = document
 
   await import(`${BUNDLE.href}?t=${Math.random()}`)
@@ -196,7 +200,18 @@ const boot = async () => {
     return modules[specifier]
   })
   await plugin.apply(context)
-  return { plugin, context, react }
+  return { plugin, context, react, storage }
+}
+
+/** A minimal localStorage stand-in; the banner keys live in it. */
+function createStorage() {
+  const entries = new Map()
+  return {
+    entries,
+    getItem: (key) => (entries.has(key) ? entries.get(key) : null),
+    setItem: (key, value) => { entries.set(key, String(value)) },
+    removeItem: (key) => { entries.delete(key) },
+  }
 }
 
 const translateWith = (context) => (key, params) => {
@@ -311,6 +326,59 @@ test('without a budget the figure keeps its own colour', async () => {
   const closed = component({ t: translate, useProjection: () => view })
   const [label] = findByClass(closed, 'sm-pill-label')
   assert.equal(label.props.className, 'sm-pill-label')
+})
+
+test('an exhausted budget raises one banner that stays dismissed', async () => {
+  const { context, react, storage } = await boot()
+  const translate = translateWith(context)
+  const view = projection()
+  view.budget.day = { limit: 5, spent: 6.1, ratio: 1.22 }
+  const { component } = context.registrations[0]
+  const render = () => {
+    react.beginRender()
+    return component({ t: translate, useProjection: () => view })
+  }
+
+  const closed = render()
+  const [notice] = findByClass(closed, 'sm-notice')
+  assert.ok(notice, 'the banner must appear next to the pill')
+  const text = flatText(notice)
+  assert.match(text, /今日预算已用完/)
+  assert.match(text, /¥6\.10 \/ ¥5\.00/)
+
+  const [close] = findByClass(notice, 'sm-notice-close')
+  assert.equal(close.props['aria-label'], '关闭')
+  close.props.onClick()
+
+  assert.equal(findByClass(render(), 'sm-notice').length, 0, 'the banner must go away')
+  assert.match(String(storage.getItem('spend-meter:notices')), /day:/)
+})
+
+test('the panel says which tariff priced the figures', async () => {
+  // A fresh boot per case: the pill remembers whether it is open.
+  const panelText = async (pricing) => {
+    const { context, react } = await boot()
+    const translate = translateWith(context)
+    const view = projection()
+    if (pricing !== undefined) view.pricing = pricing
+    const { component } = context.registrations[0]
+    react.beginRender()
+    component({ t: translate, useProjection: () => view }).children[0].props.onClick()
+    react.beginRender()
+    return flatText(component({ t: translate, useProjection: () => view }).children[1])
+  }
+
+  // the built-in table is the default and stays unannounced
+  assert.doesNotMatch(await panelText(undefined), /价目表/)
+
+  const remote = await panelText({ source: 'remote', updatedAt: '2026-11-02T00:00:00.000Z', fetchedAt: '2026-11-02T01:00:00.000Z', error: null })
+  assert.match(remote, /价目表：2026-11-02 更新/)
+
+  const cache = await panelText({ source: 'cache', updatedAt: '2026-11-01T00:00:00.000Z', fetchedAt: '2026-11-02T01:00:00.000Z', error: null })
+  assert.match(cache, /价目表：2026-11-01 更新/)
+
+  const broken = await panelText({ source: 'builtin', updatedAt: null, fetchedAt: null, error: 'status=404' })
+  assert.match(broken, /价目表更新失败：status=404/)
 })
 
 test('a broken projection degrades to a dash instead of throwing', async () => {
