@@ -147,6 +147,30 @@ test('no budget config means no budget field', () => {
   assert.equal(view.budget, null)
 })
 
+test('the two-week trend follows the calendar and weeks start on Monday', () => {
+  const definition = install({})
+  const { view } = viewOf(definition, [])
+  // Nothing has been spent yet, so there is no chart to draw.
+  assert.equal(view.history, null)
+
+  const sample1 = sample({ time: OFF_PEAK, model: 'deepseek-flash', stream: { inputTokens: 1000000, outputTokens: 100000 } })
+  let state = definition.init({ id: 'session-1' })
+  state = definition.apply(state, sample1)
+  const history = definition.wire.view(state).history
+
+  assert.equal(history.trend.length, 14)
+  const dates = history.trend.map((entry) => entry.date)
+  assert.deepEqual([...dates].sort(), dates, 'the chart runs oldest to newest')
+  for (let index = 1; index < dates.length; index += 1) {
+    const gap = Date.parse(`${dates[index]}T00:00:00Z`) - Date.parse(`${dates[index - 1]}T00:00:00Z`)
+    assert.equal(gap, 86400000, 'one bar per day, no gaps')
+  }
+  assert.equal(new Date(`${history.week.start}T00:00:00Z`).getUTCDay(), 1, 'a week starts on Monday')
+  assert.ok(history.week.spent >= 0)
+  assert.equal(history.today, dates[dates.length - 1])
+  assert.equal(state.sessionId, 'session-1')
+})
+
 test('the view reports which tariff priced it', () => {
   const definition = install({})
   const { view } = viewOf(definition, [])

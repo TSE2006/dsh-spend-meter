@@ -33,6 +33,7 @@ The package name is fixed to `@local/spend-meter` (the local-package convention)
 | Ledger · balance | Top-up balance + bonus balance, and roughly how many more turns it can pay for at the current pace |
 | Ledger · budget | Today / this month spent vs. limit (only with `budget` configured), yellow at 80%, red with a notice once exceeded; the figure above the composer turns the same colour, and its tooltip carries today's percentage |
 | Budget banner | Once a budget is used up a banner appears next to the pill; close it with × and the same day (or month) stays quiet |
+| Ledger · recent | A 14-day bar chart of daily spend (today highlighted, hover a bar for its amount) and the "this week" total (weeks start on Monday, summed across sessions) |
 | Ledger · prices | "Prices: updated <date>" when the table came from the daily download; a failed download says why; the built-in table takes no line of its own |
 | Ledger · models | Cost split per model (shown only when a session used more than one) |
 | Ledger · turns | The cost of each of the last 8 turns, expandable to the whole conversation |
@@ -58,6 +59,7 @@ That call is **not declared in `inject`**; it is resolved at runtime through `ct
 - Persisted file: `%USERPROFILE%\.dsh\spend-meter-ledger.json` (last 70 days kept), so restarts continue where the last run stopped. When `DSH_PROFILE_DIR` is set the file lives there instead, and `SPEND_METER_LEDGER` overrides the path outright.
 - Merge order: on-disk ledger → sessions seen by this process (`sessionProjections.onChanged` pushes absolute maps) → the current session's own `days` (applied last, so the newest event is never missing).
 - Without `budget` configured the field is absent and the popover shows no budget section.
+- The "recent" bars and the week total read the same ledger over the last 14 day buckets; a week starts on Monday in Beijing time. The section is hidden while the ledger is still all zeros (fresh install).
 
 ## Robustness
 

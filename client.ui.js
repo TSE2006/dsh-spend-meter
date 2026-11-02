@@ -99,6 +99,8 @@ window.__ModuleLoader__.load({
       'panel.noticeDay': 'Today’s budget is used up ({amount})',
       'panel.noticeMonth': 'This month’s budget is used up ({amount})',
       'panel.noticeDismiss': 'Dismiss',
+      'panel.recentTitle': 'Recent',
+      'panel.week': 'This week {amount}',
       'panel.pricingRemote': 'Prices: updated {date}',
       'panel.pricingError': 'Price update failed: {reason}',
       'time.hours': '{hours}h {minutes}m',
@@ -149,6 +151,8 @@ window.__ModuleLoader__.load({
       'panel.noticeDay': '今日预算已用完（{amount}）',
       'panel.noticeMonth': '本月预算已用完（{amount}）',
       'panel.noticeDismiss': '关闭',
+      'panel.recentTitle': '近期',
+      'panel.week': '本周 {amount}',
       'panel.pricingRemote': '价目表：{date} 更新',
       'panel.pricingError': '价目表更新失败：{reason}',
       'time.hours': '{hours}小时{minutes}分',
@@ -208,6 +212,9 @@ window.__ModuleLoader__.load({
 .sm-notice-text{overflow:hidden;text-overflow:ellipsis}
 .sm-notice-close{font:inherit;color:inherit;background:0 0;border:none;padding:0 2px;cursor:pointer;opacity:.7;line-height:1}
 .sm-notice-close:hover{opacity:1}
+.sm-trend{display:flex;align-items:flex-end;gap:2px;height:26px;margin:6px 0 0}
+.sm-bar{flex:1 1 0;min-height:2px;border-radius:1px;background:var(--dsw-alias-brand-primary);opacity:.45}
+.sm-bar-today{opacity:1}
 .sm-rows{color:var(--dsw-alias-label-tertiary);grid-template-columns:minmax(76px,auto) minmax(0,1fr) auto;gap:6px 16px;margin:0;display:grid}
 .sm-rows dt,.sm-rows dd{min-width:0;margin:0}
 .sm-rows dt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -685,6 +692,19 @@ window.__ModuleLoader__.load({
         && sinceDate !== `${budget.today.slice(0, 7)}-01`
       const budgetNote = startedMidMonth ? t('panel.budgetSince', { date: sinceDate }) : undefined
 
+      // Last two weeks across every session the Host remembers.
+      const history = view && view.history && Array.isArray(view.history.trend) && view.history.trend.length > 0
+        ? view.history
+        : undefined
+      const trendPeak = history === undefined
+        ? 0
+        : history.trend.reduce((peak, entry) => Math.max(peak, Number(entry.cost) || 0), 0)
+      const trendHeight = (cost) => {
+        const share = trendPeak > 0 ? (Number(cost) || 0) / trendPeak : 0
+        // Keep a sliver visible for empty days so the chart never looks broken.
+        return Math.max(2, Math.round(share * 100))
+      }
+
       // Which tariff priced these numbers. The built-in table is the documented
       // default, so only a downloaded table or a failed download is worth a line.
       const priceInfo = view && view.pricing ? view.pricing : undefined
@@ -800,6 +820,31 @@ window.__ModuleLoader__.load({
                   budgetNote === undefined ? null : h('div', { className: 'sm-note-tight' }, budgetNote),
                 )
               : null,
+
+            history === undefined
+              ? null
+              : h(
+                  'div',
+                  null,
+                  h('div', { className: 'sm-section' }, t('panel.recentTitle')),
+                  h(
+                    'div',
+                    { className: 'sm-trend' },
+                    history.trend.map((entry) =>
+                      h('span', {
+                        key: entry.date,
+                        className: entry.date === history.today ? 'sm-bar sm-bar-today' : 'sm-bar',
+                        style: { height: `${trendHeight(entry.cost)}%` },
+                        title: `${entry.date} ${symbol}${formatMoney(entry.cost)}`,
+                      }),
+                    ),
+                  ),
+                  h(
+                    'div',
+                    { className: 'sm-note-tight' },
+                    t('panel.week', { amount: `${symbol}${formatMoney(history.week.spent)}` }),
+                  ),
+                ),
 
             h('div', { className: 'sm-section' }, t('panel.balanceTitle')),
 

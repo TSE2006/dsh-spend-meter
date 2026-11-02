@@ -34,6 +34,9 @@ const LEDGER_FILE = process.env.SPEND_METER_LEDGER || profileFile('spend-meter-l
 /** Days kept in the ledger; older buckets are dropped on every write. */
 const LEDGER_KEEP_DAYS = 70
 
+/** How many days the popover charts. */
+const TREND_DAYS = 14
+
 /**
  * The published tariff. It is a plain JSON file maintained in the plugin's own
  * repository, so a price change needs no release: the Host fetches it once a day,
@@ -427,7 +430,7 @@ function applyToolCall(state, event, pricing) {
 
 //#region view
 
-function summarise(state, pricing, wallet, budget, priceInfo) {
+function summarise(state, pricing, wallet, budget, priceInfo, history) {
   const models = []
   for (const [modelKey, entry] of Object.entries(state.models)) {
     const total = entry.cost.miss + entry.cost.hit + entry.cost.out
@@ -477,6 +480,8 @@ function summarise(state, pricing, wallet, budget, priceInfo) {
     /** Per-day spend of this conversation, so the Client can render its own slice. */
     days: state.days ?? {},
     budget: budget ?? null,
+    /** Two-week trend and this week's total across every session the Host knows. */
+    history: history ?? null,
     wallet: wallet ?? { status: 'loading' },
     pricing: {
       windows: pricing.windows,
@@ -804,6 +809,36 @@ export function apply(ctx, config) {
       }
     }
 
+    /** Shift a `YYYY-MM-DD` label by whole days without touching the local clock. */
+    const shiftDate = (date, days) => new Date(Date.parse(`${date}T00:00:00.000Z`) + days * 86400000).toISOString().slice(0, 10)
+
+    /**
+     * The last two weeks of spending, plus this week's total (weeks start on
+     * Monday). Absent until there is at least one day with money on it.
+     */
+    const historyView = (state) => {
+      const totals = dayTotals(state.sessionId, state.days)
+      const today = beijingMoment(Date.now()).date
+      const trend = []
+      for (let back = TREND_DAYS - 1; back >= 0; back -= 1) {
+        const date = shiftDate(today, -back)
+        trend.push({ date, cost: money(totals.get(date) ?? 0) })
+      }
+      if (!trend.some((entry) => entry.cost > 0)) return null
+      const weekday = beijingMoment(Date.now()).weekday
+      const weekStart = shiftDate(today, -((weekday + 6) % 7))
+      let weekSpent = 0
+      for (const [date, amount] of totals) {
+        if (date >= weekStart && date <= today) weekSpent += amount
+      }
+      return {
+        currency: pricing.currency,
+        today,
+        trend,
+        week: { start: weekStart, spent: money(weekSpent) },
+      }
+    }
+
     //#endregion
 
     //#region pricing
@@ -919,13 +954,14 @@ export function apply(ctx, config) {
           diag.limits = pricing.limits
           diag.liveKeys = live.size
           diag.budget = budgetView(state)
+          diag.history = historyView(state) === null ? 'empty' : 'ok'
           diag.pricing = priceSource
           const now = Date.now()
           if (diag.writtenAt === undefined || now - diag.writtenAt > 800) {
             diag.writtenAt = now
             reportDiag(diag)
           }
-          return summarise(state, pricing, wallet, budgetView(state), priceSource)
+          return summarise(state, pricing, wallet, budgetView(state), priceSource, historyView(state))
         },
       },
     }

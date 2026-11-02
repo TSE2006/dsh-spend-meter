@@ -47,7 +47,8 @@ const createReact = () => {
       createElement: (type, props, ...children) => ({
         type,
         props: { ...props, ...(children.length === 0 ? {} : { children: childrenOf(children) }) },
-        children,
+        // React flattens nested child arrays; a chart built with .map() relies on it.
+        children: children.flat(Infinity),
       }),
       Component,
       Fragment: 'Fragment',
@@ -379,6 +380,51 @@ test('the panel says which tariff priced the figures', async () => {
 
   const broken = await panelText({ source: 'builtin', updatedAt: null, fetchedAt: null, error: 'status=404' })
   assert.match(broken, /价目表更新失败：status=404/)
+})
+
+test('the panel charts the last two weeks and this week’s total', async () => {
+  const { context, react } = await boot()
+  const translate = translateWith(context)
+  const view = projection()
+  view.history = {
+    currency: 'CNY',
+    today: '2026-11-14',
+    trend: Array.from({ length: 14 }, (_, index) => ({
+      date: `2026-11-${String(index + 1).padStart(2, '0')}`,
+      // a flat week followed by a spike on the last day
+      cost: index === 13 ? 3.2 : 0.1,
+    })),
+    week: { start: '2026-11-09', spent: 3.5 },
+  }
+  const { component } = context.registrations[0]
+  react.beginRender()
+  component({ t: translate, useProjection: () => view }).children[0].props.onClick()
+  react.beginRender()
+  const panel = component({ t: translate, useProjection: () => view }).children[1]
+
+  const text = flatText(panel)
+  assert.match(text, /近期/)
+  assert.match(text, /本周 ¥3\.50/)
+
+  const [trend] = findByClass(panel, 'sm-trend')
+  assert.ok(trend, 'the chart must render')
+  assert.equal(trend.children.length, 14)
+  assert.equal(trend.children.filter((bar) => String(bar.props.className).includes('sm-bar-today')).length, 1)
+  // the spike is the tallest bar, and every bar carries its own tooltip
+  assert.equal(trend.children[13].props.style.height, '100%')
+  assert.match(trend.children[0].props.title, /^2026-11-01 ¥0\.100$/)
+})
+
+test('without history the chart is left out', async () => {
+  const { context, react } = await boot()
+  const translate = translateWith(context)
+  const view = projection()
+  const { component } = context.registrations[0]
+  react.beginRender()
+  component({ t: translate, useProjection: () => view }).children[0].props.onClick()
+  react.beginRender()
+  const panel = component({ t: translate, useProjection: () => view }).children[1]
+  assert.equal(findByClass(panel, 'sm-trend').length, 0)
 })
 
 test('a broken projection degrades to a dash instead of throwing', async () => {
