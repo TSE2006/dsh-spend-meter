@@ -69,6 +69,12 @@ test('one conversation prices its turns, searches and compaction', () => {
   assert.ok(Math.abs(view.cost.total - (1.41 + 11.7 + 0.28 + 0.01)) < 1e-9, 'the total adds every line up')
   assert.equal(view.saved, 0.49)
   assert.equal(view.hidden.count, 1)
+  // the two billed tools are split, and the summary names the model that wrote it
+  assert.deepEqual(view.search.byTool, [
+    { tool: 'web_search', calls: 1, cost: 0.005 },
+    { tool: 'web_fetch', calls: 1, cost: 0.005 },
+  ])
+  assert.deepEqual(view.hidden.byModel, [{ id: 'deepseek-official/deepseek-flash', count: 1, cost: 0.28 }])
 })
 
 test('a holiday bills the whole day at the off-peak rate', () => {

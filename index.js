@@ -243,14 +243,15 @@ function emptyState() {
     totals: bucket(),
     cost: { miss: 0, hit: 0, out: 0 },
     saved: 0,
-    hidden: { count: 0, cost: 0 },
+    hidden: { count: 0, cost: 0, models: {} },
     models: {},
     turns: {},
     /** Beijing-time day buckets of this conversation's own spend. */
     days: {},
     /** Filled from the Session header so the ledger can tell its own row apart. */
     sessionId: undefined,
-    search: { calls: 0, cost: 0 },
+    /** `tools` splits the billed search calls by the tool that made them. */
+    search: { calls: 0, cost: 0, tools: {} },
     last: null,
   }
 }
@@ -409,9 +410,21 @@ function applyCompaction(state, event, pricing) {
     priced: entry.priced || priced !== undefined,
     hidden: { count: entry.hidden.count + 1, cost: entry.hidden.cost + amount },
   }))
+  const byModel = next.hidden.models ?? {}
   return {
     ...next,
-    hidden: { count: next.hidden.count + 1, cost: next.hidden.cost + amount },
+    hidden: {
+      count: next.hidden.count + 1,
+      cost: next.hidden.cost + amount,
+      // Which model wrote the summary: the price per summary differs per model.
+      models: {
+        ...byModel,
+        [modelKey]: {
+          count: (byModel[modelKey]?.count ?? 0) + 1,
+          cost: (byModel[modelKey]?.cost ?? 0) + amount,
+        },
+      },
+    },
   }
 }
 
@@ -420,9 +433,17 @@ function applyToolCall(state, event, pricing) {
   if (typeof toolName !== 'string' || !SEARCH_TOOLS.has(toolName)) return state
   if (typeof event.time === 'number' && event.time < pricing.searchFreeUntil) return state
   const amount = pricing.searchPerCall
+  const tools = state.search.tools ?? {}
   return {
     ...state,
-    search: { calls: state.search.calls + 1, cost: state.search.cost + amount },
+    search: {
+      calls: state.search.calls + 1,
+      cost: state.search.cost + amount,
+      tools: {
+        ...tools,
+        [toolName]: { calls: (tools[toolName]?.calls ?? 0) + 1, cost: (tools[toolName]?.cost ?? 0) + amount },
+      },
+    },
   }
 }
 
@@ -469,8 +490,20 @@ function summarise(state, pricing, wallet, budget, priceInfo, history) {
     },
     saved: money(state.saved),
     withoutCache: money(total + state.saved),
-    hidden: { count: state.hidden.count, cost: money(state.hidden.cost) },
-    search: { calls: state.search.calls, cost: money(state.search.cost) },
+    hidden: {
+      count: state.hidden.count,
+      cost: money(state.hidden.cost),
+      byModel: Object.entries(state.hidden.models ?? {})
+        .map(([id, entry]) => ({ id, count: entry.count, cost: money(entry.cost) }))
+        .sort((left, right) => right.cost - left.cost),
+    },
+    search: {
+      calls: state.search.calls,
+      cost: money(state.search.cost),
+      byTool: Object.entries(state.search.tools ?? {})
+        .map(([tool, entry]) => ({ tool, calls: entry.calls, cost: money(entry.cost) }))
+        .sort((left, right) => right.calls - left.calls),
+    },
     models,
     unpriced: models.filter((entry) => !entry.priced).map((entry) => entry.id),
     /** Models priced from the family rate because no entry matched exactly. */

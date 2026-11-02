@@ -70,6 +70,7 @@ window.__ModuleLoader__.load({
       'panel.output': 'Output',
       'panel.search': 'Web search',
       'panel.hidden': 'Auto-compaction',
+      'panel.breakdown': '{label}: {items}',
       'panel.calls': '{count} calls',
       'panel.times': '{count} times',
       'panel.cacheSaved': 'Cache reads saved {amount}',
@@ -124,6 +125,7 @@ window.__ModuleLoader__.load({
       'panel.output': '输出',
       'panel.search': '联网搜索',
       'panel.hidden': '自动压缩摘要',
+      'panel.breakdown': '{label}：{items}',
       'panel.calls': '{count} 次',
       'panel.times': '{count} 次',
       'panel.cacheSaved': '缓存命中已省下 {amount}',
@@ -815,6 +817,33 @@ window.__ModuleLoader__.load({
                   })
                 : null,
             ),
+
+            // Which tool paid for the search calls, and which model wrote each
+            // compaction summary — the two lines whose unit price is not tokens.
+            view && Array.isArray(view.search?.byTool) && view.search.byTool.length > 1
+              ? h(
+                  'div',
+                  { className: 'sm-note-tight' },
+                  t('panel.breakdown', {
+                    label: t('panel.search'),
+                    items: view.search.byTool
+                      .map((entry) => `${entry.tool} ${entry.calls} · ${symbol}${formatMoney(entry.cost)}`)
+                      .join('  '),
+                  }),
+                )
+              : null,
+            view && Array.isArray(view.hidden?.byModel) && view.hidden.byModel.length > 0
+              ? h(
+                  'div',
+                  { className: 'sm-note-tight' },
+                  t('panel.breakdown', {
+                    label: t('panel.hidden'),
+                    items: view.hidden.byModel
+                      .map((entry) => `${entry.id} ${entry.count} · ${symbol}${formatMoney(entry.cost)}`)
+                      .join('  '),
+                  }),
+                )
+              : null,
 
             view && view.saved > 0
               ? h(

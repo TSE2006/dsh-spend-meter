@@ -104,8 +104,19 @@ const projection = () => ({
   cost: { miss: 0.0024, hit: 0.01, out: 0.0272, hidden: 0.28, search: 0.01, total: 0.3296 },
   saved: 0.49,
   withoutCache: 0.5,
-  hidden: { count: 1, cost: 0.28 },
-  search: { calls: 2, cost: 0.01 },
+  hidden: {
+    count: 1,
+    cost: 0.28,
+    byModel: [{ id: 'deepseek-official/deepseek-flash', count: 1, cost: 0.28 }],
+  },
+  search: {
+    calls: 2,
+    cost: 0.01,
+    byTool: [
+      { tool: 'web_search', calls: 1, cost: 0.005 },
+      { tool: 'web_fetch', calls: 1, cost: 0.005 },
+    ],
+  },
   models: [
     {
       id: 'deepseek-official/deepseek-flash',
@@ -426,6 +437,20 @@ test('each line shows the rate it was charged at', async () => {
   assert.match(text, /1\.2k × ¥2\.00\/M/)
   assert.match(text, /500\.0k × ¥0\.020\/M/)
   assert.match(text, /3\.4k × ¥8\.00\/M/)
+})
+
+test('the search and compaction lines name what paid for them', async () => {
+  const { context, react } = await boot()
+  const translate = translateWith(context)
+  const view = projection()
+  const { component } = context.registrations[0]
+  react.beginRender()
+  component({ t: translate, useProjection: () => view }).children[0].props.onClick()
+  react.beginRender()
+  const text = flatText(component({ t: translate, useProjection: () => view }).children[1])
+
+  assert.match(text, /联网搜索：web_search 1 · ¥0\.0050\s+web_fetch 1 · ¥0\.0050/)
+  assert.match(text, /自动压缩摘要：deepseek-official\/deepseek-flash 1 · ¥0\.280/)
 })
 
 test('the panel charts the last two weeks and this week’s total', async () => {

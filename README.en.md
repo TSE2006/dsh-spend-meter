@@ -39,6 +39,7 @@ The package name is fixed to `@local/spend-meter` (the local-package convention)
 | Budget banner | Once a budget is used up a banner appears next to the pill; close it with × and the same day (or month) stays quiet |
 | Ledger · recent | A 14-day bar chart of daily spend (today highlighted, hover a bar for its amount) and the "this week" total (weeks start on Monday, summed across sessions) |
 | Ledger · prices | "Prices: updated <date>" when the table came from the daily download; a failed download says why; the built-in table takes no line of its own |
+| Ledger · breakdown | "Web search" is split per tool (`web_search` / `web_fetch`, own counts and amounts) and "Auto-compaction" per model that wrote each summary |
 | Ledger · models | Cost split per model (shown only when a session used more than one) |
 | Ledger · turns | The cost of each of the last 8 turns, expandable to the whole conversation |
 | Ledger · links | Jump to the DeepSeek platform's usage / top-up pages |
